@@ -45,17 +45,14 @@ func (q *Queue) EnQueue(v interface{}) {
 	for {
 		tail := load(&q.tail)
 		next := load(&tail.next)
-
-		if tail == load(&q.tail) { // are tail and next consistent?
-			if next == nil { // Was Tail pointing to the last node?
-				if cas(&tail.next, next, n) { // to link node at the end of the linked list
-					atomic.AddInt32(&q.count, 1)
-					cas(&q.tail, tail, n) // try to swing tail to the inserted node
-					break
-				}
-			} else {
-				cas(&q.tail, tail, next) // try to swing tail to the inserted node
+		if next == nil { // Was Tail pointing to the last node?
+			if cas(&tail.next, next, n) { // to link node at the end of the linked list
+				atomic.AddInt32(&q.count, 1)
+				cas(&q.tail, tail, n) // try to swing tail to the inserted node
+				break
 			}
+		} else {
+			cas(&q.tail, tail, next) // try to swing tail to the inserted node
 		}
 	}
 }
@@ -68,18 +65,16 @@ func (q *Queue) DeQueue() interface{} {
 		head := load(&q.head)
 		next := load(&head.next)
 
-		if head == load(&q.head) { // are head, tail, and next consistent?
-			if head == tail { // Is queue empty or Tail falling behind?
-				if next == nil { // Is queue empty?
-					return nil // Queue is empty, couldn't dequeue
-				}
-				cas(&q.tail, tail, next) // Tail is falling behind.Try to advance it
-			} else {
-				v := next.value               // Read value before CAS,Otherwise, another dequeue might free the next node
-				if cas(&q.head, head, next) { // Try to swing Head to the next node
-					atomic.AddInt32(&q.count, -1)
-					return v // Dequeue is done.  Exit loop
-				}
+		if head == tail { // Is queue empty or Tail falling behind?
+			if next == nil { // Is queue empty?
+				return nil // Queue is empty, couldn't dequeue
+			}
+			cas(&q.tail, tail, next) // Tail is falling behind.Try to advance it
+		} else {
+			v := next.value               // Read value before CAS,Otherwise, another dequeue might free the next node
+			if cas(&q.head, head, next) { // Try to swing Head to the next node
+				atomic.AddInt32(&q.count, -1)
+				return v // Dequeue is done.  Exit loop
 			}
 		}
 	}
