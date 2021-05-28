@@ -5,29 +5,34 @@ import (
 	"unsafe"
 )
 
+// Stack a lock-free concurrent FILO stack.
 type Stack struct {
-	top   unsafe.Pointer
-	count int32
+	top   unsafe.Pointer // point to the latest value pushed.
+	count int32          // stack value num.
 }
 
 type node struct {
-	value interface{}
-	next  unsafe.Pointer
+	value interface{}    // value store
+	next  unsafe.Pointer // next node
 }
 
+// New return an empty Stack
 func New() *Stack {
 	n := unsafe.Pointer(&node{})
 	return &Stack{top: n}
 }
 
+// Init initialize stack.
 func (s *Stack) Init() {
 	s.top = unsafe.Pointer(&node{})
 }
 
+// Size stack element's number
 func (s *Stack) Size() int32 {
 	return atomic.LoadInt32(&s.count)
 }
 
+// Push puts the given value at the top of the stack.
 func (s *Stack) Push(i interface{}) {
 	slot := &node{}
 	for {
@@ -41,6 +46,8 @@ func (s *Stack) Push(i interface{}) {
 	}
 }
 
+// Pop removes and returns the value at the top of the stack.
+// It returns nil if the stack is empty.
 func (s *Stack) Pop() interface{} {
 	for {
 		slot := load(&s.top)
