@@ -1,6 +1,7 @@
 package stack
 
 import (
+	"runtime"
 	"sync/atomic"
 	"unsafe"
 )
@@ -8,39 +9,41 @@ import (
 // Stack a lock-free concurrent FILO stack.
 type Stack struct {
 	top   unsafe.Pointer // point to the latest value pushed.
-	count int32          // stack value num.
-}
-
-type node struct {
-	value interface{}    // value store
-	next  unsafe.Pointer // next node
+	count uintptr        // stack value num.
 }
 
 // New return an empty Stack
 func New() *Stack {
-	n := unsafe.Pointer(&node{})
-	return &Stack{top: n}
+	return &Stack{}
+}
+
+type node struct {
+	p    unsafe.Pointer // value store
+	next unsafe.Pointer // next node
+}
+
+func newNode(i interface{}) *node {
+	return &node{p: unsafe.Pointer(&i)}
 }
 
 // Init initialize stack.
 func (s *Stack) Init() {
-	s.top = unsafe.Pointer(&node{})
+	s.top = nil
+	runtime.GC()
 }
 
 // Size stack element's number
-func (s *Stack) Size() int32 {
-	return atomic.LoadInt32(&s.count)
+func (s *Stack) Size() int {
+	return int(atomic.LoadUintptr(&s.count))
 }
 
 // Push puts the given value at the top of the stack.
 func (s *Stack) Push(i interface{}) {
-	slot := &node{}
+	slot := newNode(i)
 	for {
-		// give a slot frist,then store value
 		slot.next = atomic.LoadPointer(&s.top)
 		if cas(&s.top, slot.next, unsafe.Pointer(slot)) {
-			slot.value = i
-			atomic.AddInt32(&s.count, 1)
+			atomic.AddUintptr(&s.count, 1)
 			break
 		}
 	}
@@ -50,21 +53,26 @@ func (s *Stack) Push(i interface{}) {
 // It returns nil if the stack is empty.
 func (s *Stack) Pop() interface{} {
 	for {
-		slot := load(&s.top)
-		if slot.next == nil {
+		top := atomic.LoadPointer(&s.top)
+		if top == nil {
 			break
 		}
+		slot := (*node)(top)
 		if cas(&s.top, unsafe.Pointer(slot), slot.next) {
 			slot.next = nil
-			atomic.AddInt32(&s.count, -1)
-			return slot.value
+			atomic.AddUintptr(&s.count, ^uintptr(0))
+			return slot.load()
 		}
 	}
 	return nil
 }
 
-func load(i *unsafe.Pointer) *node {
-	return (*node)(atomic.LoadPointer(i))
+func (n *node) load() interface{} {
+	p := atomic.LoadPointer(&n.p)
+	if p == nil {
+		return nil
+	}
+	return *(*interface{})(p)
 }
 
 func cas(addr *unsafe.Pointer, old, new unsafe.Pointer) bool {
