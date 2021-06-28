@@ -18,8 +18,9 @@ func benchMap(b *testing.B, bench bench) {
 	for _, m := range [...]Interface{
 		&UnsafeQueue{},
 		&MutexQueue{},
-		&queue.Slice{},
 		&queue.Queue{},
+		&MutexSlice{},
+		&queue.Slice{},
 	} {
 		b.Run(fmt.Sprintf("%T", m), func(b *testing.B) {
 			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(Interface)

@@ -18,15 +18,16 @@ func TestInit(t *testing.T) {
 		if q.Pop() != nil {
 			t.Fatalf("init Pop != nil :%v", q.Pop())
 		}
+		q.Init()
+		if q.Size() != 0 {
+			t.Fatalf("init after Init err,size!=0,%d", q.Size())
+		}
+
 		p := 1
 		q.Push(p)
 		v := q.Pop()
 		if v.(int) != p {
 			t.Fatalf("init push want:%d, real:%v", p, v)
-		}
-		q.Init()
-		if q.Size() != 0 {
-			t.Fatalf("init after Init err,size!=0,%d", q.Size())
 		}
 		if q := q.Pop(); q != nil {
 			t.Fatalf("init after Init err,Pop!=nil,%v", q)
