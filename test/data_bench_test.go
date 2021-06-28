@@ -1,4 +1,4 @@
-package queue_test
+package data_test
 
 import (
 	"data/queue"
@@ -10,12 +10,12 @@ import (
 )
 
 type bench struct {
-	setup func(*testing.B, Interface)
-	perG  func(b *testing.B, pb *testing.PB, i int, m Interface)
+	setup func(*testing.B, SQInterface)
+	perG  func(b *testing.B, pb *testing.PB, i int, m SQInterface)
 }
 
 func benchMap(b *testing.B, bench bench) {
-	for _, m := range [...]Interface{
+	for _, m := range [...]SQInterface{
 		&UnsafeQueue{},
 		&MutexQueue{},
 		&queue.Queue{},
@@ -23,7 +23,7 @@ func benchMap(b *testing.B, bench bench) {
 		&queue.Slice{},
 	} {
 		b.Run(fmt.Sprintf("%T", m), func(b *testing.B) {
-			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(Interface)
+			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(SQInterface)
 			if bench.setup != nil {
 				bench.setup(b, m)
 			}
@@ -43,13 +43,13 @@ func BenchmarkPush(b *testing.B) {
 	const stackSize = 1 << 10
 
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m Interface) {
+		setup: func(_ *testing.B, m SQInterface) {
 			for i := 0; i < stackSize; i++ {
 				m.Push(i)
 			}
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m Interface) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
 			for ; pb.Next(); i++ {
 				m.Push(i)
 			}
@@ -61,13 +61,13 @@ func BenchmarkPop(b *testing.B) {
 	const stackSize = 1 << 10
 
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m Interface) {
+		setup: func(_ *testing.B, m SQInterface) {
 			for i := 0; i < stackSize; i++ {
 				m.Push(i)
 			}
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m Interface) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
 			for ; pb.Next(); i++ {
 				m.Pop()
 			}
@@ -79,13 +79,13 @@ func BenchmarkMostlyPush(b *testing.B) {
 	const stackSize = 1 << 10
 
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m Interface) {
+		setup: func(_ *testing.B, m SQInterface) {
 			for i := 0; i < stackSize; i++ {
 				m.Push(i)
 			}
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m Interface) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
 			for ; pb.Next(); i++ {
 				j := i % 4
 				m.Push(i)
@@ -101,13 +101,13 @@ func BenchmarkMostlyPop(b *testing.B) {
 	const stackSize = 1 << 10
 
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m Interface) {
+		setup: func(_ *testing.B, m SQInterface) {
 			for i := 0; i < stackSize; i++ {
 				m.Push(i)
 			}
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m Interface) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
 			for ; pb.Next(); i++ {
 				j := i % 8
 				if j == 0 {
@@ -123,13 +123,13 @@ func BenchmarkPushPopBalance(b *testing.B) {
 	const stackSize = 1 << 10
 
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m Interface) {
+		setup: func(_ *testing.B, m SQInterface) {
 			for i := 0; i < stackSize; i++ {
 				m.Push(i)
 			}
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m Interface) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
 			for ; pb.Next(); i++ {
 				m.Push(i)
 				m.Pop()
@@ -142,13 +142,13 @@ func BenchmarkPushPopCollision(b *testing.B) {
 	const stackSize = 1 << 10
 
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m Interface) {
+		setup: func(_ *testing.B, m SQInterface) {
 			for i := 0; i < stackSize; i++ {
 				m.Push(i)
 			}
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m Interface) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
 
 			for ; pb.Next(); i++ {
 				if i%2 == 0 {
@@ -174,12 +174,12 @@ func BenchmarkConcurrentPushPop(b *testing.B) {
 	}()
 
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m Interface) {
+		setup: func(_ *testing.B, m SQInterface) {
 			if _, ok := m.(*UnsafeQueue); ok {
 				b.Skip("UnsafeQueue can not test concurrent.")
 			}
 		},
-		perG: func(b *testing.B, pb *testing.PB, i int, m Interface) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
 			go func() {
 				<-start
 				for {
@@ -200,6 +200,46 @@ func BenchmarkConcurrentPushPop(b *testing.B) {
 	})
 }
 
+func BenchmarkConcurrentMostlyPush(b *testing.B) {
+	const stackSize = 1 << 10
+
+	exit := make(chan struct{}, 1)
+	start := make(chan struct{}, 1)
+	defer func() {
+		close(start)
+		close(exit)
+		start = nil
+		exit = nil
+	}()
+
+	benchMap(b, bench{
+		setup: func(_ *testing.B, m SQInterface) {
+			if _, ok := m.(*UnsafeQueue); ok {
+				b.Skip("UnsafeQueue can not test concurrent.")
+			}
+		},
+		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
+			go func() {
+				<-start
+				for {
+					select {
+					case <-exit:
+						return
+					default:
+						time.Sleep(time.Millisecond)
+						m.Pop()
+					}
+				}
+			}()
+			start <- struct{}{}
+			for ; pb.Next(); i++ {
+				m.Push(i)
+			}
+			exit <- struct{}{}
+		},
+	})
+}
+
 func BenchmarkConcurrentMostlyPop(b *testing.B) {
 	const stackSize = 1 << 10
 
@@ -213,12 +253,12 @@ func BenchmarkConcurrentMostlyPop(b *testing.B) {
 	}()
 
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m Interface) {
+		setup: func(_ *testing.B, m SQInterface) {
 			if _, ok := m.(*UnsafeQueue); ok {
 				b.Skip("UnsafeQueue can not test concurrent.")
 			}
 		},
-		perG: func(b *testing.B, pb *testing.PB, i int, m Interface) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
 			go func() {
 				<-start
 				for {
@@ -226,7 +266,7 @@ func BenchmarkConcurrentMostlyPop(b *testing.B) {
 					case <-exit:
 						return
 					default:
-						time.Sleep(time.Microsecond)
+						time.Sleep(time.Millisecond)
 						m.Push(1)
 					}
 				}

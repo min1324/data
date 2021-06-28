@@ -1,4 +1,4 @@
-package stack_test
+package data_test
 
 import (
 	"data/stack"

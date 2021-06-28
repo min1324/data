@@ -1,25 +1,29 @@
-package queue_test
+package data_test
 
 import (
+	"runtime"
 	"sync"
 	"sync/atomic"
 )
 
-type Interface interface {
+// use for slice
+const (
+	bit  = 3
+	mod  = 1<<bit - 1
+	null = ^uintptr(0) // -1
+)
+
+// SQInterface use in stack,queue testing
+type SQInterface interface {
+	Init()
+	Size() int
 	Push(interface{})
 	Pop() interface{}
-	Init()
 }
 
-// MutexQueue stack with mutex
-type MutexQueue struct {
-	head, tail *node
-	count      int
-	mu         sync.Mutex
-	once       sync.Once
-}
-
+// node stack,queue node
 type node struct {
+	// p    unsafe.Pointer
 	p    interface{}
 	next *node
 }
@@ -32,6 +36,62 @@ func newNode(i interface{}) *node {
 func (n *node) load() interface{} {
 	return n.p
 	//return *(*interface{})(n.p)
+}
+
+// -------------------------------------	stack	------------------------------------------- //
+
+// MutexStack stack with mutex
+type MutexStack struct {
+	top   *node
+	count int
+	mu    sync.Mutex
+}
+
+func (s *MutexStack) Size() int {
+	return s.count
+}
+
+func (s *MutexStack) Init() {
+	s.mu.Lock()
+	e := s.top
+	s.top = nil
+	s.count = 0
+	for e != nil {
+		n := e
+		e = n.next
+		n.next = nil
+	}
+	s.mu.Unlock()
+	runtime.GC()
+}
+
+func (s *MutexStack) Push(i interface{}) {
+	s.mu.Lock()
+	n := newNode(i)
+	n.next = s.top
+	s.top = n
+	s.mu.Unlock()
+}
+
+func (s *MutexStack) Pop() interface{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.top == nil {
+		return nil
+	}
+	top := s.top
+	s.top = top.next
+	return top.p
+}
+
+// -------------------------------------	queue	------------------------------------------- //
+
+// MutexQueue stack with mutex
+type MutexQueue struct {
+	head, tail *node
+	count      int
+	mu         sync.Mutex
+	once       sync.Once
 }
 
 func (q *MutexQueue) onceInit() {
@@ -81,6 +141,9 @@ func (q *MutexQueue) Push(i interface{}) {
 }
 
 func (q *MutexQueue) Pop() interface{} {
+	if q.head == q.tail {
+		return nil
+	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.onceInit()
@@ -92,12 +155,6 @@ func (q *MutexQueue) Pop() interface{} {
 	slot.next = nil
 	return q.head.load()
 }
-
-const (
-	bit  = 3
-	mod  = 1<<bit - 1
-	null = ^uintptr(0) // -1
-)
 
 // MutexSlice an array of queue
 // each time have concurrent Add pushID
@@ -164,7 +221,7 @@ func (s *MutexSlice) Pop() interface{} {
 	return e
 }
 
-// UnsafeQueue stack without mutex
+// UnsafeQueue queue without mutex
 type UnsafeQueue struct {
 	head, tail *node
 	count      int
