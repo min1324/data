@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"sync"
 	"sync/atomic"
 )
 
@@ -13,44 +14,29 @@ const (
 )
 
 // Slice an array of queue
-// each time have concurrent Add pushID
-// but only one can get and add popID
-// if popID == (pushID or 0),it means queue empty,
-// return -1
 type Slice struct {
-	dirty  [mod + 1]Queue
-	count  uintptr
-	pushID uintptr
-	popID  uintptr
+	count  uintptr // size
+	popID  uintptr // current pop id
+	pushID uintptr // current push id
+
+	dirty [mod + 1]Queue
+
+	pushMu sync.Mutex
+	popMu  sync.Mutex
 }
 
 func (s *Slice) hash(id uintptr) *Queue {
 	return &s.dirty[id&mod]
 }
 
-// getPushID only use in Push
-// because Push must success,
-// so get the unique ID means push an item into queue
-func (s *Slice) getPushID() uintptr {
-	return atomic.AddUintptr(&s.pushID, 1)
-}
-
-func (s *Slice) getPopID() uintptr {
-	for {
-		popId := atomic.LoadUintptr(&s.popID)
-		if popId == atomic.LoadUintptr(&s.pushID) {
-			return null
-		}
-		newId := popId
-		atomic.AddUintptr(&newId, 1)
-		if atomic.CompareAndSwapUintptr(&s.popID, popId, newId) {
-			return newId
-		}
-	}
-}
-
 func (s *Slice) Init() {
+	s.count = 0
+	s.popID = 0
+	s.pushID = 0
 
+	for _, e := range s.dirty {
+		e.Init()
+	}
 }
 
 func (s *Slice) Size() int {
@@ -58,16 +44,33 @@ func (s *Slice) Size() int {
 }
 
 func (s *Slice) Push(i interface{}) {
-	id := s.getPushID()
+	s.pushMu.Lock()
+	defer s.pushMu.Unlock()
+
+	id := atomic.LoadUintptr(&s.pushID)
 	s.hash(id).Push(i)
+	atomic.AddUintptr(&s.pushID, 1)
 	atomic.AddUintptr(&s.count, 1)
 }
 
 func (s *Slice) Pop() interface{} {
-	id := s.getPopID()
-	if id == null {
+	id := atomic.LoadUintptr(&s.popID)
+	if id == atomic.LoadUintptr(&s.pushID) {
 		return nil
 	}
+
+	s.popMu.Lock()
+	defer s.popMu.Unlock()
+	id = atomic.LoadUintptr(&s.popID)
+	if id == atomic.LoadUintptr(&s.pushID) {
+		return nil
+	}
+	e := s.hash(id).Pop()
+	atomic.AddUintptr(&s.popID, 1)
 	atomic.AddUintptr(&s.count, null)
-	return s.hash(id).Pop()
+	return e
+}
+
+func casUintptr(addr *uintptr, old, new uintptr) bool {
+	return atomic.CompareAndSwapUintptr(addr, old, new)
 }
