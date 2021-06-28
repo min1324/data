@@ -13,20 +13,48 @@ const (
 	null = ^uintptr(0) // -1
 )
 
+type Interface interface {
+	Init()
+	Size() int
+	Push(interface{})
+	Pop() interface{}
+}
+
 // Slice an array of queue
 type Slice struct {
 	count  uintptr // size
 	popID  uintptr // current pop id
 	pushID uintptr // current push id
 
-	dirty [mod + 1]Queue
+	dirty [mod + 1]Interface
+	New   func() Interface
 
 	pushMu sync.Mutex
 	popMu  sync.Mutex
+	once   sync.Once
 }
 
-func (s *Slice) hash(id uintptr) *Queue {
-	return &s.dirty[id&mod]
+func (s *Slice) hash(id uintptr) Interface {
+	return s.dirty[id&mod]
+}
+
+func (s *Slice) onceInit() {
+	s.once.Do(func() {
+		s.init()
+	})
+}
+
+func (s *Slice) init() {
+	for i := 0; i < len(s.dirty); i++ {
+		if s.New == nil {
+			// use queue
+			s.dirty[i] = &Queue{}
+		} else {
+			s.dirty[i] = s.New()
+		}
+	}
+	s.popID = s.pushID
+	s.count = 0
 }
 
 // Init prevent push new element into queue
@@ -37,11 +65,7 @@ func (s *Slice) Init() {
 	s.popMu.Lock()
 	defer s.popMu.Unlock()
 
-	s.popID = s.pushID
-	for _, e := range s.dirty {
-		e.Init()
-	}
-	s.count = 0
+	s.init()
 }
 
 func (s *Slice) Size() int {
@@ -51,6 +75,7 @@ func (s *Slice) Size() int {
 func (s *Slice) Push(i interface{}) {
 	s.pushMu.Lock()
 	defer s.pushMu.Unlock()
+	s.onceInit()
 
 	id := atomic.LoadUintptr(&s.pushID)
 	s.hash(id).Push(i)
@@ -66,6 +91,8 @@ func (s *Slice) Pop() interface{} {
 
 	s.popMu.Lock()
 	defer s.popMu.Unlock()
+	s.onceInit()
+
 	id = atomic.LoadUintptr(&s.popID)
 	if id == atomic.LoadUintptr(&s.pushID) {
 		return nil

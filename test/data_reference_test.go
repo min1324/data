@@ -165,18 +165,36 @@ func (q *MutexQueue) Pop() interface{} {
 // if popID == (pushID or 0),it means queue empty,
 // return -1
 type MutexSlice struct {
-	dirty  [mod + 1]MutexQueue
-	count  uintptr
-	pushID uintptr
-	popID  uintptr
+	count  uintptr // size
+	popID  uintptr // current pop id
+	pushID uintptr // current push id
+
+	dirty [mod + 1]MutexQueue
+
 	pushMu sync.Mutex
 	popMu  sync.Mutex
+	once   sync.Once
 }
 
 func (s *MutexSlice) hash(id uintptr) *MutexQueue {
 	return &s.dirty[id&mod]
 }
 
+func (s *MutexSlice) onceInit() {
+	s.once.Do(func() {
+		s.init()
+	})
+}
+
+func (s *MutexSlice) init() {
+	for i := 0; i < len(s.dirty); i++ {
+		s.dirty[i].Init()
+	}
+	s.popID = s.pushID
+	s.count = 0
+}
+
+// Init prevent push new element into queue
 func (s *MutexSlice) Init() {
 	s.pushMu.Lock()
 	defer s.pushMu.Unlock()
@@ -184,11 +202,7 @@ func (s *MutexSlice) Init() {
 	s.popMu.Lock()
 	defer s.popMu.Unlock()
 
-	s.popID = s.pushID
-	for i := 0; i < len(s.dirty); i++ {
-		s.dirty[i].Init()
-	}
-	s.count = 0
+	s.init()
 }
 
 func (s *MutexSlice) Size() int {
@@ -198,6 +212,7 @@ func (s *MutexSlice) Size() int {
 func (s *MutexSlice) Push(i interface{}) {
 	s.pushMu.Lock()
 	defer s.pushMu.Unlock()
+	s.onceInit()
 
 	id := atomic.LoadUintptr(&s.pushID)
 	s.hash(id).Push(i)
@@ -213,6 +228,7 @@ func (s *MutexSlice) Pop() interface{} {
 
 	s.popMu.Lock()
 	defer s.popMu.Unlock()
+	s.onceInit()
 
 	id = atomic.LoadUintptr(&s.popID)
 	if id == atomic.LoadUintptr(&s.pushID) {
