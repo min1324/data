@@ -6,7 +6,7 @@ import (
 	"unsafe"
 )
 
-// Queue a lock-free concurrent FIFO queues.
+// Queue is a lock-free unbounded queue.
 type Queue struct {
 	head  unsafe.Pointer // head not store value,the frist value in head.next if exists.
 	tail  unsafe.Pointer // tail.next if not nil, need promote.
