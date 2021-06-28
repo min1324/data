@@ -29,14 +29,19 @@ func (s *Slice) hash(id uintptr) *Queue {
 	return &s.dirty[id&mod]
 }
 
+// Init prevent push new element into queue
 func (s *Slice) Init() {
-	s.count = 0
-	s.popID = 0
-	s.pushID = 0
+	s.pushMu.Lock()
+	defer s.pushMu.Unlock()
 
+	s.popMu.Lock()
+	defer s.popMu.Unlock()
+
+	s.popID = s.pushID
 	for _, e := range s.dirty {
 		e.Init()
 	}
+	s.count = 0
 }
 
 func (s *Slice) Size() int {

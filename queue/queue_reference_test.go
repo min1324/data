@@ -112,7 +112,17 @@ func (s *MutexSlice) hash(id uintptr) *MutexQueue {
 }
 
 func (s *MutexSlice) Init() {
-	// no need init
+	s.pushMu.Lock()
+	defer s.pushMu.Unlock()
+
+	s.popMu.Lock()
+	defer s.popMu.Unlock()
+
+	s.popID = s.pushID
+	for i := 0; i < len(s.dirty); i++ {
+		s.dirty[i].Init()
+	}
+	s.count = 0
 }
 
 func (s *MutexSlice) Size() int {
