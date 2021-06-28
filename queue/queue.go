@@ -36,15 +36,36 @@ func New() *Queue {
 // so use a once func in Push to init queue.
 func (q *Queue) onceInit() {
 	q.once.Do(func() {
-		q.Init()
+		q.init()
 	})
+}
+
+func (q *Queue) init() {
+	q.head = unsafe.Pointer(&node{})
+	q.tail = q.head
+	q.count = 0
 }
 
 // Init initialize queue
 func (q *Queue) Init() {
-	q.head = unsafe.Pointer(&node{})
-	q.tail = q.head
-	q.count = 0
+	q.onceInit()
+	for {
+		s := q.head // start node
+		e := q.tail // end node
+		if s == e {
+			return
+		}
+		if cas(&q.head, s, q.tail) { // head point to tail means queue empty
+			// free queue [s ->...-> e]
+			node := (*node)(s)
+			for node.next != e {
+				s = node.next
+				node.next = nil
+				atomic.AddUintptr(&q.count, null)
+			}
+			return
+		}
+	}
 }
 
 // Size queue element's number
