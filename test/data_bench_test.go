@@ -149,7 +149,6 @@ func BenchmarkPushPopCollision(b *testing.B) {
 		},
 
 		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
-
 			for ; pb.Next(); i++ {
 				if i%2 == 0 {
 					m.Push(i)
