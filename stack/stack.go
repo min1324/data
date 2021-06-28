@@ -28,8 +28,20 @@ func newNode(i interface{}) *node {
 
 // Init initialize stack.
 func (s *Stack) Init() {
-	s.top = nil
-	runtime.GC()
+	e := atomic.LoadPointer(&s.top)
+	for e != nil {
+		e = atomic.LoadPointer(&s.top)
+		if cas(&s.top, e, nil) {
+			// free dummy node
+			for e != nil {
+				node := (*node)(e)
+				e = node.next
+				node.next = nil
+			}
+			runtime.GC()
+			return
+		}
+	}
 }
 
 // Size stack element's number
