@@ -33,14 +33,38 @@ func (q *MutexQueue) onceInit() {
 	})
 }
 
-func (q *MutexQueue) Init() {
+func (q *MutexQueue) init() {
 	q.head = &node{}
 	q.tail = q.head
 	q.count = 0
 }
+
+func (q *MutexQueue) Init() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.onceInit()
+
+	s := q.head // start node
+	e := q.tail // end node
+	if s == e {
+		return
+	}
+	q.head = q.tail
+
+	// free queue [s ->...-> e]
+	node := s
+	for s != e {
+		s = node.next
+		node.next = nil
+		q.count--
+	}
+	return
+}
+
 func (q *MutexQueue) Size() int {
 	return q.count
 }
+
 func (q *MutexQueue) Push(i interface{}) {
 	q.mu.Lock()
 	q.onceInit()

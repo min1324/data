@@ -58,7 +58,7 @@ func (q *Queue) Init() {
 		if cas(&q.head, s, q.tail) { // head point to tail means queue empty
 			// free queue [s ->...-> e]
 			node := (*node)(s)
-			for node.next != e {
+			for s != e {
 				s = node.next
 				node.next = nil
 				atomic.AddUintptr(&q.count, null)
