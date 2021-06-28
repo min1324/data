@@ -1,7 +1,7 @@
 package data_test
 
 import (
-	"data/queue"
+	"data/stack"
 	"fmt"
 	"reflect"
 	"sync/atomic"
@@ -16,11 +16,13 @@ type bench struct {
 
 func benchMap(b *testing.B, bench bench) {
 	for _, m := range [...]SQInterface{
-		&UnsafeQueue{},
-		&MutexQueue{},
-		&queue.Queue{},
-		&MutexSlice{},
-		&queue.Slice{},
+		// &UnsafeQueue{},
+		// &MutexQueue{},
+		// &queue.Queue{},
+		// &MutexSlice{},
+		// &queue.Slice{},
+		&MutexStack{},
+		&stack.Stack{},
 	} {
 		b.Run(fmt.Sprintf("%T", m), func(b *testing.B) {
 			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(SQInterface)

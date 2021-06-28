@@ -74,6 +74,9 @@ func (s *MutexStack) Push(i interface{}) {
 }
 
 func (s *MutexStack) Pop() interface{} {
+	if s.top == nil {
+		return nil
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.top == nil {
