@@ -40,7 +40,7 @@ func (q *Queue) onceInit() {
 	})
 }
 
-// Init initialize queue in lock.
+// Init initialize queue
 func (q *Queue) Init() {
 	q.head = unsafe.Pointer(&node{})
 	q.tail = q.head
@@ -52,38 +52,39 @@ func (q *Queue) Size() int {
 	return int(atomic.LoadUintptr(&q.count))
 }
 
-// Enqueue puts the given value at the tail of the queue.
+// Push puts the given value at the tail of the queue.
 func (q *Queue) Push(i interface{}) {
 	q.onceInit()
-	slot := newNode(i)
+	slot := unsafe.Pointer(newNode(i))
 	for {
-		//先取一下尾指针和尾指针的next
+		// 先取一下尾指针和尾指针的next
 		tail := atomic.LoadPointer(&q.tail)
 		tailNode := (*node)(tail)
 		next := tailNode.next
 
-		//如果尾指针已经被移动了，则重新开始
+		// 如果尾指针已经被移动了，则重新开始
 		if tail != atomic.LoadPointer(&q.tail) {
 			continue
 		}
 
-		//如果尾指针的 next 不为NULL，则 fetch 全局尾指针到next
+		// 如果尾指针的 next 不为NULL，则 fetch 全局尾指针到next
 		if next != nil {
 			cas(&q.tail, tail, next)
 			continue
 		}
 
-		//如果加入结点成功，则退出
-		if cas(&tailNode.next, next, unsafe.Pointer(slot)) {
+		// next==nil,确定是最后一个
+		// 如果加入结点成功，则退出
+		if cas(&tailNode.next, next, slot) {
+			// 已经成功加入节点，尝试将 tail 提升到最新。
+			cas(&q.tail, tail, slot)
 			atomic.AddUintptr(&q.count, 1)
-			// try to swing tail to the inserted node
-			cas(&q.tail, tail, unsafe.Pointer(slot))
 			break
 		}
 	}
 }
 
-// Dequeue removes and returns the value at the head of the queue.
+// Pop removes and returns the value at the head of the queue.
 // It returns nil if the queue is empty.
 func (q *Queue) Pop() interface{} {
 	q.onceInit()
@@ -99,22 +100,21 @@ func (q *Queue) Pop() interface{} {
 			continue
 		}
 
-		// 如果是空队列
-		if head == tail && next == nil {
-			return nil
-		}
-
-		//如果 tail 指针落后了
-		if head == tail && next != nil {
+		// queue 正常
+		if head == tail {
+			// 空队列返回
+			if next == nil {
+				return nil
+			}
+			// tail 指针落后了
 			cas(&q.tail, tail, next)
-			continue
-		}
-
-		// head != tail
-		if cas(&q.head, head, next) {
-			nextNode := (*node)(next)
-			atomic.AddUintptr(&q.count, ^uintptr(0))
-			return nextNode.p
+		} else {
+			if cas(&q.head, head, next) {
+				nextNode := (*node)(next)
+				atomic.AddUintptr(&q.count, ^uintptr(0))
+				headNode.next = nil // free old dummy node
+				return nextNode.p
+			}
 		}
 	}
 }
@@ -124,6 +124,5 @@ func loadNode(i *unsafe.Pointer) *node {
 }
 
 func cas(p *unsafe.Pointer, old, new unsafe.Pointer) bool {
-	return atomic.CompareAndSwapPointer(
-		p, unsafe.Pointer(old), unsafe.Pointer(new))
+	return atomic.CompareAndSwapPointer(p, old, new)
 }
