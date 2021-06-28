@@ -70,7 +70,7 @@ func (s *Stack) Pop() interface{} {
 			break
 		}
 		slot := (*node)(top)
-		if cas(&s.top, unsafe.Pointer(slot), slot.next) {
+		if cas(&s.top, top, slot.next) {
 			slot.next = nil
 			atomic.AddUintptr(&s.count, ^uintptr(0))
 			return slot.load()
