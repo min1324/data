@@ -1,7 +1,6 @@
 package data_test
 
 import (
-	"data/queue"
 	"fmt"
 	"math/rand"
 	"reflect"
@@ -10,6 +9,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/min1324/data/queue"
 )
 
 type mapOp string

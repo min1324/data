@@ -1,14 +1,15 @@
 package data_test
 
 import (
-	"data/queue"
-	"data/stack"
 	"fmt"
 	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"unsafe"
+
+	"github.com/min1324/data/queue"
+	"github.com/min1324/data/stack"
 )
 
 type test struct {
