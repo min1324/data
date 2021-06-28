@@ -164,7 +164,7 @@ func (s *MutexSlice) Pop() interface{} {
 	return e
 }
 
-// UnsafeQueue stack with mutex
+// UnsafeQueue stack without mutex
 type UnsafeQueue struct {
 	head, tail *node
 	count      int
@@ -173,22 +173,44 @@ type UnsafeQueue struct {
 
 func (q *UnsafeQueue) onceInit() {
 	q.once.Do(func() {
-		q.Init()
+		q.init()
 	})
 }
 
-func (q *UnsafeQueue) Init() {
+func (q *UnsafeQueue) init() {
 	q.head = &node{}
 	q.tail = q.head
 	q.count = 0
 }
 
-func (q *UnsafeQueue) Push(i interface{}) {
+func (q *UnsafeQueue) Init() {
 	q.onceInit()
 
-	n := newNode(i)
-	n.next = q.tail.next
-	q.tail = n
+	s := q.head // start node
+	e := q.tail // end node
+	if s == e {
+		return
+	}
+	q.head = q.tail
+	q.count = 0
+	// free queue [s ->...-> e]
+	for s != e {
+		node := s
+		s = node.next
+		node.next = nil
+	}
+	return
+}
+
+func (q *UnsafeQueue) Size() int {
+	return q.count
+}
+
+func (q *UnsafeQueue) Push(i interface{}) {
+	q.onceInit()
+	slot := newNode(i)
+	q.tail.next = slot
+	q.tail = slot
 }
 
 func (q *UnsafeQueue) Pop() interface{} {
@@ -196,7 +218,8 @@ func (q *UnsafeQueue) Pop() interface{} {
 	if q.head.next == nil {
 		return nil
 	}
-	slot := q.head.next
-	q.head = slot.next
-	return slot.p
+	slot := q.head
+	q.head = q.head.next
+	slot.next = nil
+	return q.head.load()
 }
