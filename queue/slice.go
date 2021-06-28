@@ -4,6 +4,8 @@ import (
 	"sync/atomic"
 )
 
+// BUG
+
 const (
 	bit  = 3
 	mod  = 1<<bit - 1
@@ -36,7 +38,7 @@ func (s *Slice) getPushID() uintptr {
 func (s *Slice) getPopID() uintptr {
 	for {
 		popId := atomic.LoadUintptr(&s.popID)
-		if popId == atomic.LoadUintptr(&s.pushID) || popId == uintptr(0) {
+		if popId == atomic.LoadUintptr(&s.pushID) {
 			return null
 		}
 		newId := popId
