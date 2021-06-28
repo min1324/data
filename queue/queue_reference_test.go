@@ -59,3 +59,40 @@ func (q *MutexQueue) Pop() interface{} {
 	q.head = slot.next
 	return slot.p
 }
+
+// UnsafeQueue stack with mutex
+type UnsafeQueue struct {
+	head, tail *node
+	count      int
+	once       sync.Once
+}
+
+func (q *UnsafeQueue) onceInit() {
+	q.once.Do(func() {
+		q.Init()
+	})
+}
+
+func (q *UnsafeQueue) Init() {
+	q.head = &node{}
+	q.tail = q.head
+	q.count = 0
+}
+
+func (q *UnsafeQueue) Push(i interface{}) {
+	q.onceInit()
+
+	n := newNode(i)
+	n.next = q.tail.next
+	q.tail = n
+}
+
+func (q *UnsafeQueue) Pop() interface{} {
+	q.onceInit()
+	if q.head.next == nil {
+		return nil
+	}
+	slot := q.head.next
+	q.head = slot.next
+	return slot.p
+}
