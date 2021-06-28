@@ -5,31 +5,48 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"unsafe"
 )
 
 type testFunc func()
 
 func TestInit(t *testing.T) {
-	var s stack.Stack
+
 	t.Run("init", func(t *testing.T) {
-		if s.Size() != 0 {
-			t.Fatalf("init size != 0 :%d", s.Size())
+		var q stack.Stack
+		if q.Size() != 0 {
+			t.Fatalf("init size != 0 :%d", q.Size())
 		}
-		if s.Pop() != nil {
-			t.Fatalf("init Pop != nil :%v", s.Pop())
+		if q.Pop() != nil {
+			t.Fatalf("init Pop != nil :%v", q.Pop())
 		}
+		q.Init()
+		if q.Size() != 0 {
+			t.Fatalf("Init err,size!=0,%d", q.Size())
+		}
+		if q.Pop() != nil {
+			t.Fatalf("Init Pop != nil :%v", q.Pop())
+		}
+
 		p := 1
-		s.Push(p)
-		v := s.Pop()
-		if v.(int) != p {
+		q.Push(p)
+		v := q.Pop()
+		if v != p {
 			t.Fatalf("init push want:%d, real:%v", p, v)
 		}
-		s.Init()
-		if s.Size() != 0 {
-			t.Fatalf("init after Init err,size!=0,%d", s.Size())
+
+		var null = unsafe.Pointer(nil)
+		q.Push(null)
+		nv := q.Pop()
+		if nv != null {
+			t.Fatalf("push nil want:%v, real:%v", null, nv)
 		}
-		if q := s.Pop(); q != nil {
-			t.Fatalf("init after Init err,Pop!=nil,%v", q)
+
+		nullp := new(interface{})
+		q.Push(nullp)
+		np := q.Pop()
+		if np != nullp {
+			t.Fatalf("push interface want:%v, real:%v", nullp, np)
 		}
 	})
 }

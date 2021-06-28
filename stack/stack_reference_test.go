@@ -1,6 +1,9 @@
 package stack_test
 
-import "sync"
+import (
+	"runtime"
+	"sync"
+)
 
 // MutexStack stack with mutex
 type MutexStack struct {
@@ -16,6 +19,24 @@ type node struct {
 
 func newNode(i interface{}) *node {
 	return &node{p: i}
+}
+
+func (s *MutexStack) Size() int {
+	return s.count
+}
+
+func (s *MutexStack) Init() {
+	s.mu.Lock()
+	e := s.top
+	s.top = nil
+	s.count = 0
+	for e != nil {
+		n := e
+		e = n.next
+		n.next = nil
+	}
+	s.mu.Unlock()
+	runtime.GC()
 }
 
 func (s *MutexStack) Push(i interface{}) {

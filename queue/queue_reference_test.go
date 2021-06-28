@@ -26,10 +26,17 @@ type node struct {
 
 func newNode(i interface{}) *node {
 	return &node{p: i}
+	// return &node{p: unsafe.Pointer(&i)}
 }
+
+func (n *node) load() interface{} {
+	return n.p
+	//return *(*interface{})(n.p)
+}
+
 func (q *MutexQueue) onceInit() {
 	q.once.Do(func() {
-		q.Init()
+		q.init()
 	})
 }
 
@@ -50,13 +57,12 @@ func (q *MutexQueue) Init() {
 		return
 	}
 	q.head = q.tail
-
+	q.count = 0
 	// free queue [s ->...-> e]
-	node := s
 	for s != e {
+		node := s
 		s = node.next
 		node.next = nil
-		q.count--
 	}
 	return
 }
@@ -68,9 +74,9 @@ func (q *MutexQueue) Size() int {
 func (q *MutexQueue) Push(i interface{}) {
 	q.mu.Lock()
 	q.onceInit()
-	n := newNode(i)
-	q.tail.next = n
-	q.tail = n
+	slot := newNode(i)
+	q.tail.next = slot
+	q.tail = slot
 	q.mu.Unlock()
 }
 
@@ -81,10 +87,10 @@ func (q *MutexQueue) Pop() interface{} {
 	if q.head.next == nil {
 		return nil
 	}
-	slot := q.head.next
-	q.head.next = slot.next
+	slot := q.head
+	q.head = q.head.next
 	slot.next = nil
-	return slot.p
+	return q.head.load()
 }
 
 const (

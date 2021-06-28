@@ -5,13 +5,15 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"unsafe"
 )
 
 type testFunc func()
 
 func TestInit(t *testing.T) {
-	var q queue.Queue
+
 	t.Run("init", func(t *testing.T) {
+		var q MutexQueue
 		if q.Size() != 0 {
 			t.Fatalf("init size != 0 :%d", q.Size())
 		}
@@ -20,17 +22,31 @@ func TestInit(t *testing.T) {
 		}
 		q.Init()
 		if q.Size() != 0 {
-			t.Fatalf("init after Init err,size!=0,%d", q.Size())
+			t.Fatalf("Init err,size!=0,%d", q.Size())
+		}
+		if q.Pop() != nil {
+			t.Fatalf("Init Pop != nil :%v", q.Pop())
 		}
 
 		p := 1
 		q.Push(p)
 		v := q.Pop()
-		if v.(int) != p {
+		if v != p {
 			t.Fatalf("init push want:%d, real:%v", p, v)
 		}
-		if q := q.Pop(); q != nil {
-			t.Fatalf("init after Init err,Pop!=nil,%v", q)
+
+		var null = unsafe.Pointer(nil)
+		q.Push(null)
+		nv := q.Pop()
+		if nv != null {
+			t.Fatalf("push nil want:%v, real:%v", null, nv)
+		}
+
+		nullp := new(interface{})
+		q.Push(nullp)
+		np := q.Pop()
+		if np != nullp {
+			t.Fatalf("push interface want:%v, real:%v", nullp, np)
 		}
 	})
 }

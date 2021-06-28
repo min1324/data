@@ -18,7 +18,7 @@ func New() *Stack {
 }
 
 type node struct {
-	p    unsafe.Pointer // value store
+	p    interface{}    // value store
 	next unsafe.Pointer // next node
 }
 
@@ -80,11 +80,8 @@ func (s *Stack) Pop() interface{} {
 }
 
 func (n *node) load() interface{} {
-	p := atomic.LoadPointer(&n.p)
-	if p == nil {
-		return nil
-	}
-	return *(*interface{})(p)
+	return n.p
+	// return *(*interface{})(n.p)
 }
 
 func cas(addr *unsafe.Pointer, old, new unsafe.Pointer) bool {

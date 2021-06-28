@@ -21,6 +21,12 @@ type node struct {
 
 func newNode(i interface{}) *node {
 	return &node{p: i}
+	// return &node{p: unsafe.Pointer(&i)}
+}
+
+func (n *node) load() interface{} {
+	return n.p
+	//return *(*interface{})(n.p)
 }
 
 // New return an empty Queue
@@ -57,8 +63,8 @@ func (q *Queue) Init() {
 		}
 		if cas(&q.head, s, q.tail) { // head point to tail means queue empty
 			// free queue [s ->...-> e]
-			node := (*node)(s)
 			for s != e {
+				node := (*node)(s)
 				s = node.next
 				node.next = nil
 				atomic.AddUintptr(&q.count, null)
@@ -134,7 +140,7 @@ func (q *Queue) Pop() interface{} {
 				nextNode := (*node)(next)
 				atomic.AddUintptr(&q.count, ^uintptr(0))
 				headNode.next = nil // free old dummy node
-				return nextNode.p
+				return nextNode.load()
 			}
 		}
 	}
