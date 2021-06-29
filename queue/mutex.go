@@ -134,6 +134,7 @@ func (q *MQueue) Push(i interface{}) {
 	slot := newElement(i)
 	q.tail.next = slot
 	q.tail = slot
+	q.count++
 	q.mu.Unlock()
 }
 
@@ -150,6 +151,7 @@ func (q *MQueue) Pop() interface{} {
 	slot := q.head
 	q.head = q.head.next
 	slot.next = nil
+	q.count--
 	return q.head.load()
 }
 
@@ -211,6 +213,7 @@ func (q *DMQueue) Push(i interface{}) {
 	slot := newElement(i)
 	q.tail.next = slot
 	q.tail = slot
+	q.count++
 }
 
 func (q *DMQueue) Pop() interface{} {
@@ -227,5 +230,6 @@ func (q *DMQueue) Pop() interface{} {
 	slot := q.head
 	q.head = q.head.next
 	slot.next = nil
+	q.count--
 	return q.head.load()
 }
