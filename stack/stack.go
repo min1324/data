@@ -23,7 +23,13 @@ type node struct {
 }
 
 func newNode(i interface{}) *node {
-	return &node{p: unsafe.Pointer(&i)}
+	return &node{p: i}
+	// return &node{p: unsafe.Pointer(&i)}
+}
+
+func (n *node) load() interface{} {
+	return n.p
+	//return *(*interface{})(n.p)
 }
 
 // Init initialize stack.
@@ -77,11 +83,6 @@ func (s *Stack) Pop() interface{} {
 		}
 	}
 	return nil
-}
-
-func (n *node) load() interface{} {
-	return n.p
-	// return *(*interface{})(n.p)
 }
 
 func cas(addr *unsafe.Pointer, old, new unsafe.Pointer) bool {
