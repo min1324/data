@@ -70,6 +70,7 @@ func (s *MutexStack) Push(i interface{}) {
 	n := newNode(i)
 	n.next = s.top
 	s.top = n
+	s.count++
 	s.mu.Unlock()
 }
 
@@ -84,6 +85,7 @@ func (s *MutexStack) Pop() interface{} {
 	}
 	top := s.top
 	s.top = top.next
+	s.count--
 	return top.p
 }
 

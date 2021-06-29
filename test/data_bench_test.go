@@ -22,6 +22,21 @@ const (
 
 var mapOps = [...]mapOp{opPush, opPop}
 
+/*
+1<< 20~28
+1048576		20
+2097152		21
+4194304		22
+8388608		23
+16777216	24
+33554432	25
+67108864	26
+134217728	27
+268435456	28
+*/
+const queueMaxSize = 1 << 24 // queue max size
+const prevPushSize = 1 << 23 // queue previous push
+
 func randCall(m SQInterface) {
 	op := mapOps[rand.Intn(len(mapOps))]
 	switch op {
@@ -43,39 +58,39 @@ func benchMap(b *testing.B, bench bench) {
 	for _, m := range [...]SQInterface{
 		// &UnsafeQueue{},
 		// &MutexQueue{},
-		// &queue.Queue{},
-		&MutexSlice{},
-		&queue.Slice{},
+		&queue.Queue{},
+		// &MutexSlice{},
+		// &queue.Slice{},
 		// &MutexStack{},
 		// &stack.Stack{},
+		&queue.AQueue{},
 	} {
 		b.Run(fmt.Sprintf("%T", m), func(b *testing.B) {
 			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(SQInterface)
+			m.Init()
+			if q, ok := m.(*queue.AQueue); ok {
+				q.InitWith(queueMaxSize)
+			}
 			if bench.setup != nil {
 				bench.setup(b, m)
 			}
-
-			m.Init()
 
 			b.ResetTimer()
 
 			var i int64
 			b.RunParallel(func(pb *testing.PB) {
 				id := int(atomic.AddInt64(&i, 1) - 1)
-				bench.perG(b, pb, id*b.N, m)
+				bench.perG(b, pb, (id*b.N)%queueMaxSize, m)
 			})
+			// free
+			m.Init()
 		})
 	}
 }
 
 func BenchmarkPush(b *testing.B) {
-	const stackSize = 1 << 10
-
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
-			for i := 0; i < stackSize; i++ {
-				m.Push(i)
-			}
 		},
 
 		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
@@ -87,11 +102,10 @@ func BenchmarkPush(b *testing.B) {
 }
 
 func BenchmarkPop(b *testing.B) {
-	const stackSize = 1 << 10
 
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m SQInterface) {
-			for i := 0; i < stackSize; i++ {
+		setup: func(b *testing.B, m SQInterface) {
+			for i := 0; i < prevPushSize; i++ {
 				m.Push(i)
 			}
 		},
@@ -105,11 +119,10 @@ func BenchmarkPop(b *testing.B) {
 }
 
 func BenchmarkMostlyPush(b *testing.B) {
-	const stackSize = 1 << 10
 
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
-			for i := 0; i < stackSize; i++ {
+			for i := 0; i < prevPushSize; i++ {
 				m.Push(i)
 			}
 		},
@@ -127,11 +140,9 @@ func BenchmarkMostlyPush(b *testing.B) {
 }
 
 func BenchmarkMostlyPop(b *testing.B) {
-	const stackSize = 1 << 10
-
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
-			for i := 0; i < stackSize; i++ {
+			for i := 0; i < prevPushSize; i++ {
 				m.Push(i)
 			}
 		},
@@ -149,11 +160,10 @@ func BenchmarkMostlyPop(b *testing.B) {
 }
 
 func BenchmarkPushPopBalance(b *testing.B) {
-	const stackSize = 1 << 10
 
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
-			for i := 0; i < stackSize; i++ {
+			for i := 0; i < prevPushSize; i++ {
 				m.Push(i)
 			}
 		},
@@ -168,11 +178,10 @@ func BenchmarkPushPopBalance(b *testing.B) {
 }
 
 func BenchmarkPushPopCollision(b *testing.B) {
-	const stackSize = 1 << 10
 
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
-			for i := 0; i < stackSize; i++ {
+			for i := 0; i < prevPushSize; i++ {
 				m.Push(i)
 			}
 		},
@@ -190,11 +199,10 @@ func BenchmarkPushPopCollision(b *testing.B) {
 }
 
 func BenchmarkPushPopInterlace(b *testing.B) {
-	const stackSize = 1 << 10
 
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
-			for i := 0; i < stackSize; i++ {
+			for i := 0; i < prevPushSize; i++ {
 				m.Push(i)
 			}
 		},
@@ -214,7 +222,6 @@ func BenchmarkPushPopInterlace(b *testing.B) {
 }
 
 func BenchmarkConcurrentPushPop(b *testing.B) {
-	const stackSize = 1 << 10
 
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
@@ -251,7 +258,6 @@ func BenchmarkConcurrentPushPop(b *testing.B) {
 }
 
 func BenchmarkConcurrentMostlyPush(b *testing.B) {
-	const stackSize = 1 << 10
 
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
@@ -289,11 +295,15 @@ func BenchmarkConcurrentMostlyPush(b *testing.B) {
 
 func BenchmarkConcurrentMostlyPop(b *testing.B) {
 	const stackSize = 1 << 10
+	const push, pop = 128, 1
 
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
 			if _, ok := m.(*UnsafeQueue); ok {
 				b.Skip("UnsafeQueue can not test concurrent.")
+			}
+			if q, ok := m.(*queue.AQueue); ok {
+				q.InitWith(queueMaxSize)
 			}
 		},
 		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
@@ -312,11 +322,11 @@ func BenchmarkConcurrentMostlyPop(b *testing.B) {
 					case <-exit:
 						return
 					default:
-						time.Sleep(time.Millisecond * time.Duration(rand.Intn(100)))
 						m.Push(1)
 					}
 				}
 			}()
+
 			for ; pb.Next(); i++ {
 				m.Pop()
 			}

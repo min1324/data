@@ -9,7 +9,6 @@ import (
 	"unsafe"
 
 	"github.com/min1324/data/queue"
-	"github.com/min1324/data/stack"
 )
 
 type test struct {
@@ -21,19 +20,21 @@ type testFunc func(*testing.T, SQInterface)
 
 func testStack(t *testing.T, test test) {
 	for _, m := range [...]SQInterface{
-		&UnsafeQueue{},
-		&MutexQueue{},
-		&queue.Queue{},
-		&MutexSlice{},
-		&queue.Slice{},
-		&MutexStack{},
-		&stack.Stack{},
+		// &UnsafeQueue{},
+		// &MutexQueue{},
+		// &queue.Queue{},
+		// &MutexSlice{},
+		// &queue.Slice{},
+		// &MutexStack{},
+		// &stack.Stack{},
+		&queue.AQueue{},
 	} {
 		t.Run(fmt.Sprintf("%T", m), func(t *testing.T) {
 			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(SQInterface)
 			if test.setup != nil {
 				test.setup(t, m)
 			}
+			test.perG(t, m)
 		})
 	}
 }
@@ -59,7 +60,7 @@ func TestInit(t *testing.T) {
 			p := 1
 			s.Push(p)
 			v := s.Pop()
-			if v != p {
+			if v.(int) != p {
 				t.Fatalf("init push want:%d, real:%v", p, v)
 			}
 			var null = unsafe.Pointer(nil)
@@ -80,50 +81,58 @@ func TestInit(t *testing.T) {
 }
 
 func TestConcurrentPush(t *testing.T) {
+	const maxGo, maxNum = 4, 1 << 10
+	const maxSize = maxGo * maxNum
+
 	testStack(t, test{
 		setup: func(t *testing.T, s SQInterface) {
 			if _, ok := s.(*UnsafeQueue); ok {
 				t.Skip("UnsafeQueue can not test concurrent.")
 			}
+			if q, ok := s.(*queue.AQueue); ok {
+				q.InitWith(maxSize)
+			}
 		},
 		perG: func(t *testing.T, s SQInterface) {
 			var wg sync.WaitGroup
-			n := 100
-			m := 100
-			for i := 0; i < m; i++ {
+			for i := 0; i < maxGo; i++ {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					for i := 0; i < n; i++ {
+					for i := 0; i < maxNum; i++ {
 						s.Push(i)
 					}
 				}()
 			}
 			wg.Wait()
-			if s.Size() != m*n {
-				t.Fatalf("TestConcurrentPush err,push:%d,real:%d", n*m, s.Size())
+			if s.Size() != maxSize {
+				t.Fatalf("TestConcurrentPush err,push:%d,real:%d", maxSize, s.Size())
 			}
 		},
 	})
 }
 
 func TestConcurrentPop(t *testing.T) {
+	const maxGo, maxNum = 4, 1 << 10
+	const maxSize = maxGo * maxNum
+
 	testStack(t, test{
 		setup: func(t *testing.T, s SQInterface) {
 			if _, ok := s.(*UnsafeQueue); ok {
 				t.Skip("UnsafeQueue can not test concurrent.")
 			}
+			if q, ok := s.(*queue.AQueue); ok {
+				q.InitWith(maxSize)
+			}
 		},
 		perG: func(t *testing.T, s SQInterface) {
 			var wg sync.WaitGroup
-			n := 100
-			m := 100
 			var sum int64
-			for i := 0; i < m*n; i++ {
+			for i := 0; i < maxSize; i++ {
 				s.Push(i)
 			}
 
-			for i := 0; i < m; i++ {
+			for i := 0; i < maxGo; i++ {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
@@ -137,18 +146,24 @@ func TestConcurrentPop(t *testing.T) {
 			}
 			wg.Wait()
 
-			if sum != int64(m*n) {
-				t.Fatalf("TestConcurrentPush err,push:%d,pop:%d", n*m, sum)
+			if sum != int64(maxSize) {
+				t.Fatalf("TestConcurrentPush err,push:%d,pop:%d", maxSize, sum)
 			}
 		},
 	})
 }
 
 func TestConcurrentPushPop(t *testing.T) {
+	const maxGo, maxNum = 4, 1 << 10
+	const maxSize = maxGo * maxNum
+
 	testStack(t, test{
 		setup: func(t *testing.T, s SQInterface) {
 			if _, ok := s.(*UnsafeQueue); ok {
 				t.Skip("UnsafeQueue can not test concurrent.")
+			}
+			if q, ok := s.(*queue.AQueue); ok {
+				q.InitWith(maxSize)
 			}
 		},
 		perG: func(t *testing.T, s SQInterface) {
@@ -158,16 +173,14 @@ func TestConcurrentPushPop(t *testing.T) {
 			var popWG sync.WaitGroup
 			var pushWG sync.WaitGroup
 
-			n := 1000
-			m := 100
-			exit := make(chan struct{}, m)
+			exit := make(chan struct{}, maxGo)
 
 			var sumPush, sumPop int64
-			for i := 0; i < m; i++ {
+			for i := 0; i < maxGo; i++ {
 				pushWG.Add(1)
 				go func() {
 					defer pushWG.Done()
-					for j := 0; j < n; j++ {
+					for j := 0; j < maxNum; j++ {
 						s.Push(j)
 						atomic.AddInt64(&sumPush, 1)
 					}
