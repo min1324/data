@@ -19,8 +19,6 @@ const (
 type SQInterface interface {
 	Init()
 	Size() int
-	Full() bool
-	Empty() bool
 	EnQueue(interface{}) bool
 	DeQueue() (interface{}, bool)
 }

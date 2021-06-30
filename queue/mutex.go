@@ -47,6 +47,9 @@ func (q *SAQueue) Size() int {
 }
 
 func (q *SAQueue) EnQueue(i interface{}) bool {
+	if q.Full() {
+		return false
+	}
 	q.mu.Lock()
 	q.onceInit()
 	q.data = append(q.data, i)
@@ -55,8 +58,8 @@ func (q *SAQueue) EnQueue(i interface{}) bool {
 }
 
 func (q *SAQueue) DeQueue() (val interface{}, ok bool) {
-	if q.Size() == 0 {
-		return nil, false
+	if q.Empty() {
+		return
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -379,8 +382,8 @@ func (q *SLQueue) EnQueue(i interface{}) bool {
 }
 
 func (q *SLQueue) DeQueue() (val interface{}, ok bool) {
-	if q.head == q.tail {
-		return nil, false
+	if q.Empty() {
+		return
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -479,8 +482,8 @@ func (q *DLQueue) EnQueue(i interface{}) bool {
 }
 
 func (q *DLQueue) DeQueue() (val interface{}, ok bool) {
-	if q.head == q.tail {
-		return nil, false
+	if q.Empty() {
+		return
 	}
 	q.popMu.Lock()
 	defer q.popMu.Unlock()

@@ -9,8 +9,6 @@ import (
 type Queue interface {
 	Init()
 	Size() int
-	Full() bool
-	Empty() bool
 	EnQueue(interface{}) bool
 	DeQueue() (val interface{}, ok bool)
 }
@@ -27,6 +25,41 @@ func New() Queue {
 	var q LLQueue
 	q.onceInit()
 	return &q
+}
+
+// 双锁链表队列
+func NewDLQueue() Queue {
+	return &DLQueue{}
+}
+
+// 双锁环形队列
+func NewDRQueue() Queue {
+	return &DRQueue{}
+}
+
+// lock-free 链表队列
+func NewLLQueue() Queue {
+	return &LLQueue{}
+}
+
+// 单锁数组队列
+func NewSAQueue() Queue {
+	return &SAQueue{}
+}
+
+// 单锁链表队列
+func NewSLQueue() Queue {
+	return &SLQueue{}
+}
+
+// 单锁环形队列
+func NewSRQueue() Queue {
+	return &SRQueue{}
+}
+
+// 一组队列
+func NewSlice() Queue {
+	return &Slice{}
 }
 
 func cas(p *unsafe.Pointer, old, new unsafe.Pointer) bool {

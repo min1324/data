@@ -155,6 +155,9 @@ func (q *LLQueue) EnQueue(val interface{}) bool {
 // Pop removes and returns the value at the head of the queue.
 // It returns nil if the queue is empty.
 func (q *LLQueue) DeQueue() (val interface{}, ok bool) {
+	if q.Empty() {
+		return
+	}
 	q.onceInit()
 	for {
 		//取出头指针，尾指针，和第一个node指针
@@ -324,6 +327,9 @@ func (q *LRQueue) getSlot(id uint32) *stateNode {
 
 // EnQueue入队，如果队列满了，返回false。
 func (q *LRQueue) EnQueue(val interface{}) bool {
+	if q.Full() {
+		return false
+	}
 	q.onceInit()
 	var slot *stateNode
 	// 获取 slot
@@ -358,6 +364,9 @@ func (q *LRQueue) EnQueue(val interface{}) bool {
 
 // DeQueue出队，如果队列空了，返回false。
 func (q *LRQueue) DeQueue() (val interface{}, ok bool) {
+	if q.Empty() {
+		return
+	}
 	q.onceInit()
 	var slot *stateNode
 	// 获取 slot
