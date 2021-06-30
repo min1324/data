@@ -1,13 +1,18 @@
+// lock-free queue package
+
 package queue
 
 import (
+	"errors"
+	"runtime"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 )
 
-// LFQueue is a lock-free unbounded linked list queue.
-type LFQueue struct {
+// LLQueue is a lock-free unbounded linked list queue.
+type LLQueue struct {
 	// 声明队列后，如果没有调用Init(),队列不能使用
 	// 为解决这个问题，加入一次性操作。
 	// 能在队列声明后，调用push或者pop操作前，初始化队列。
@@ -29,17 +34,19 @@ type LFQueue struct {
 	// 先判断tail是否指向最后一个，通过:tail.next==nil
 	// 如果不是，则需要让tail指向下一个来提升tail,直到tail指向最后一个。
 	// 通过cas将slot加入tail.
+	//
+	// stat只有pushed和poped状态。
 	head unsafe.Pointer
 	tail unsafe.Pointer
 }
 
 // Size queue element's number
-func (q *LFQueue) Size() int {
+func (q *LLQueue) Size() int {
 	return int(atomic.LoadUint32(&q.len))
 }
 
 // 一次性初始化,线程安全。
-func (q *LFQueue) onceInit() {
+func (q *LLQueue) onceInit() {
 	q.once.Do(func() {
 		q.init()
 	})
@@ -47,14 +54,14 @@ func (q *LFQueue) onceInit() {
 
 // 线程不安全初始化，只在声明队列后，
 // 使用push或者pop前调用一次。
-func (q *LFQueue) init() {
-	q.head = unsafe.Pointer(&node{})
+func (q *LLQueue) init() {
+	q.head = unsafe.Pointer(&stateNode{})
 	q.tail = q.head
 	q.len = 0
 }
 
 // Init initialize queue
-func (q *LFQueue) Init() {
+func (q *LLQueue) Init() {
 	q.onceInit()
 	for {
 		head := q.head
@@ -91,7 +98,7 @@ func (q *LFQueue) Init() {
 			}
 
 			for head != tail && head != nil {
-				freeNode := (*node)(head)
+				freeNode := (*stateNode)(head)
 				head = freeNode.next
 				freeNode.free()
 			}
@@ -101,7 +108,7 @@ func (q *LFQueue) Init() {
 		// 方案2,释放旧node,len-1
 		if cas(&q.head, head, tail) {
 			for head != tail && head != nil {
-				freeNode := (*node)(head)
+				freeNode := (*stateNode)(head)
 				head = freeNode.next
 				freeNode.free()
 				atomic.AddUint32(&q.len, negativeOne)
@@ -112,14 +119,14 @@ func (q *LFQueue) Init() {
 }
 
 // Push puts the given value at the tail of the queue.
-func (q *LFQueue) Push(i interface{}) {
+func (q *LLQueue) Push(i interface{}) {
 	q.onceInit()
-	slot := newNode(i)
+	slot := newStateNode(i)
 	slotPtr := unsafe.Pointer(slot)
 	for {
 		// 先取一下尾指针和尾指针的next
 		tail := atomic.LoadPointer(&q.tail)
-		tailNode := (*node)(tail)
+		tailNode := (*stateNode)(tail)
 		tailNext := tailNode.next
 
 		// 如果尾指针已经被移动了，则重新开始
@@ -140,7 +147,7 @@ func (q *LFQueue) Push(i interface{}) {
 			// 更新len
 			atomic.AddUint32(&q.len, 1)
 			// 完成添加，将slot设置为可用，让等待的pop可以取走
-			slot.change(node_pushed_stat)
+			slot.change(pushed_stat)
 			break
 		}
 	}
@@ -148,13 +155,13 @@ func (q *LFQueue) Push(i interface{}) {
 
 // Pop removes and returns the value at the head of the queue.
 // It returns nil if the queue is empty.
-func (q *LFQueue) Pop() interface{} {
+func (q *LLQueue) Pop() interface{} {
 	q.onceInit()
 	for {
 		//取出头指针，尾指针，和第一个node指针
 		head := atomic.LoadPointer(&q.head)
 		tail := atomic.LoadPointer(&q.tail)
-		headNode := (*node)(head)
+		headNode := (*stateNode)(head)
 		headNext := headNode.next
 
 		// Q->head 其他pop成功获得slot.指针已移动，重新取 head指针
@@ -176,8 +183,8 @@ func (q *LFQueue) Pop() interface{} {
 		// 取出slot
 
 		// 先记录slot，然后尝试取出
-		slot := (*node)(headNext)
-		if slot.status() != node_pushed_stat {
+		slot := (*stateNode)(headNext)
+		if slot.status() != pushed_stat {
 			// TODO
 			// push还没添加完成。
 			// 方案1：直接返回nil。
@@ -206,7 +213,7 @@ func (q *LFQueue) Pop() interface{} {
 }
 
 // range用于调试
-func (q *LFQueue) Range(f func(interface{})) {
+func (q *LLQueue) Range(f func(interface{})) {
 	head := q.head
 	tail := q.tail
 	if head == tail {
@@ -214,9 +221,207 @@ func (q *LFQueue) Range(f func(interface{})) {
 	}
 
 	for head != tail && head != nil {
-		headNode := (*node)(head)
-		n := (*node)(headNode.next)
+		headNode := (*stateNode)(head)
+		n := (*stateNode)(headNode.next)
 		f(n.load())
 		head = headNode.next
 	}
+}
+
+// lock-free queue implement with array
+//
+// LRQueue is a lock-free ring array queue.
+type LRQueue struct {
+	once sync.Once
+
+	len    uint32 // 队列当前数据长度
+	cap    uint32 // 队列容量，自动向上调整至2^n
+	mod    uint32 // cap-1,即2^n-1,用作取slot: data[ID&mod]
+	popID  uint32 // 指向取出数据的位置:popID&mod
+	pushID uint32 // 指向下次写入数据的位置:pushID&mod
+
+	// 环形队列，大小必须是2的倍数。
+	// state有4个状态。
+	// 这两个状态在pop操作时都表示为队列空。
+	// poped_stat 状态时，已经取出，可以写入。push操作通过cas改变为pushing_stat,获得写入权限。
+	// pushing_stat 状态时，正在写入。即队列为空。其他push操作不能更改，只能由push操作更改为pushed_stat,
+	// 这两个状态在push操作时都表示为队列满。
+	// pushed_stat 状态时，已经写入,可以取出。pop操作通过cas改变为poping_stat,获得取出权限。
+	// poping_stat 状态时，正在取出。其他pop操作不能更改，并且只能由pop操作更改为poped_stat。
+	data []stateNode
+}
+
+// 一次性初始化
+func (q *LRQueue) onceInit() {
+	q.once.Do(func() {
+		q.init()
+	})
+}
+
+func (q *LRQueue) init() {
+	if q.cap < 1 {
+		q.cap = DefauleSize
+	}
+	q.popID = q.pushID
+	q.mod = modUint32(q.cap)
+	q.cap = q.mod + 1
+	q.len = 0
+	q.data = make([]stateNode, q.cap)
+}
+
+// Init初始化长度为: DefauleSize.
+func (q *LRQueue) Init() {
+	q.InitWith()
+}
+
+// InitWith初始化长度为cap的queue,
+// 如果未提供，则使用默认值: DefauleSize.
+func (q *LRQueue) InitWith(cap ...int) {
+	if len(cap) > 0 && cap[0] > 0 {
+		q.cap = uint32(cap[0])
+	}
+	q.init()
+}
+
+// 数量
+func (q *LRQueue) Size() int {
+	return int(q.len)
+}
+
+// 根据pushID,popID获取进队，出队对应的slot
+func (q *LRQueue) getSlot(id uint32) *stateNode {
+	return &q.data[int(id&q.mod)]
+}
+
+// EnQueue入队，如果队列满了，返回false。
+func (q *LRQueue) EnQueue(val interface{}) (ok bool) {
+	q.onceInit()
+	var slot *stateNode
+	// 获取 slot
+	for {
+		// 获取最新 pushID,
+		pushID := atomic.LoadUint32(&q.pushID)
+		slot = q.getSlot(pushID)
+		stat := atomic.LoadUint32(&slot.state)
+
+		// 检测state,pushed_stat或者poping_stat表示队列满了。
+		if stat == pushed_stat || stat == poping_stat {
+			// TODO 是否需要写入缓冲区,或者扩容
+			// queue full,
+			return false
+		}
+		// 获取slot写入权限,将state变为:had_Set_PushStat
+		if casUint32(&slot.state, poped_stat, pushing_stat) {
+			// 成功获得slot
+			// 先更新pushID,让其他push更快执行
+			atomic.AddUint32(&q.pushID, 1)
+			break
+		}
+	}
+	// 向slot写入数据
+	slot.store(val)
+	atomic.AddUint32(&q.len, 1)
+
+	// 更新state为pushed_stat.
+	atomic.StoreUint32(&slot.state, pushed_stat)
+	return true
+}
+
+// DeQueue出队，如果队列空了，返回false。
+func (q *LRQueue) DeQueue() (val interface{}, ok bool) {
+	q.onceInit()
+	var slot *stateNode
+	// 获取 slot
+	for {
+		// 获取最新 popPID,
+		popPID := atomic.LoadUint32(&q.popID)
+		slot = q.getSlot(popPID)
+		stat := atomic.LoadUint32(&slot.state)
+
+		// 检测 pushStat 是否 can_set, 队列空了。
+		if stat == poped_stat || stat == pushing_stat {
+			// queue empty,
+			return nil, false
+		}
+
+		// 获取slot取出权限,将state变为poping_stat
+		if casUint32(&slot.state, pushed_stat, poping_stat) {
+			// 成功取出slot
+			// 先更新popPID,让其他pop更快执行
+			atomic.AddUint32(&q.popID, 1)
+			break
+		}
+	}
+	// 读取value
+	val = slot.load()
+	atomic.AddUint32(&q.len, negativeOne)
+
+	// 更新pushStat为poped_stat.
+	atomic.StoreUint32(&slot.state, poped_stat)
+	return val, true
+}
+
+// 入队，如果队列满了，一直等待直至入队成功。
+// 注意：如果没有出队操作，这里会发生死锁。
+func (q *LRQueue) Push(i interface{}) {
+	for !q.EnQueue(i) {
+		runtime.Gosched()
+		// TODO need grow size ?
+		// or add to temp queue
+	}
+}
+
+var (
+	errTimeOut = errors.New("超时")
+)
+
+// 带超时push入队。
+func (q *LRQueue) PushWait(i interface{}, timeout time.Duration) (bool, error) {
+	t := time.NewTicker(timeout)
+	for {
+		select {
+		case <-t.C:
+			return false, errTimeOut
+		default:
+			if q.EnQueue(i) {
+				return true, nil
+			}
+		}
+	}
+}
+
+// not use yet
+func (q *LRQueue) grow() bool {
+	// TODO grow queue data
+	return false
+}
+
+// Pop attempt to pop one element,
+// if queue empty, it got nil.
+func (q *LRQueue) Pop() interface{} {
+	e, _ := q.DeQueue()
+	return e
+}
+
+// queue's len
+func (q *LRQueue) Len() int {
+	return int(q.len)
+}
+
+// queue's cap
+func (q *LRQueue) Cap() int {
+	return int(q.cap)
+}
+
+// 队列是否空
+func (q *LRQueue) Empty() bool {
+	// return atomic.LoadUintptr(&q.len) == 0
+	return q.popID == q.pushID
+}
+
+// 队列是否满
+func (q *LRQueue) Full() bool {
+	return q.pushID^q.cap == q.popID
+	// return atomic.LoadUintptr(&q.len) == atomic.LoadUintptr(&q.cap)
+	// return (q.popID&q.mod + 1) == (q.pushID & q.mod)
 }

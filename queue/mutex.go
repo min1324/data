@@ -22,7 +22,7 @@ func (q *SAQueue) onceInit() {
 }
 
 func (q *SAQueue) init() {
-	q.data = make([]interface{}, 0, defaultQueueSize)
+	q.data = make([]interface{}, 0, DefauleSize)
 }
 
 func (q *SAQueue) Init() {
@@ -81,11 +81,7 @@ type SRQueue struct {
 
 	pushID uint32
 	popID  uint32
-	data   []snode
-}
-
-type snode struct {
-	val unsafe.Pointer
+	data   []baseNode
 }
 
 func (q *SRQueue) onceInit() {
@@ -96,13 +92,13 @@ func (q *SRQueue) onceInit() {
 
 func (q *SRQueue) init() {
 	if q.cap < 1 {
-		q.cap = defaultQueueSize
+		q.cap = DefauleSize
 	}
 	q.popID = q.pushID
 	q.len = 0
-	q.mod = minModU32(q.cap)
+	q.mod = modUint32(q.cap)
 	q.cap = q.mod + 1
-	q.data = make([]snode, q.cap)
+	q.data = make([]baseNode, q.cap)
 }
 
 func (q *SRQueue) Init() {
@@ -136,7 +132,7 @@ func (q *SRQueue) Empty() bool {
 }
 
 // 根据pushID,popID获取进队，出队对应的slot
-func (q *SRQueue) getSlot(id uint32) *snode {
+func (q *SRQueue) getSlot(id uint32) *baseNode {
 	return &q.data[int(id&q.mod)]
 }
 
@@ -152,10 +148,6 @@ func (q *SRQueue) Set(i interface{}) bool {
 	q.pushID += 1
 	q.len += 1
 	return true
-}
-
-func (n *snode) store(i interface{}) {
-	atomic.StorePointer(&n.val, unsafe.Pointer(&i))
 }
 
 func (q *SRQueue) Get() (interface{}, bool) {
@@ -175,13 +167,6 @@ func (q *SRQueue) Get() (interface{}, bool) {
 	q.len -= 1
 	slot.free()
 	return val, true
-}
-
-func (n *snode) load() interface{} {
-	return *(*interface{})(n.val)
-}
-
-func (n *snode) free() {
 }
 
 func (q *SRQueue) Push(i interface{}) {
@@ -215,21 +200,13 @@ type DRQueue struct {
 
 	pushID uint32
 	popID  uint32
-	data   []dnode
-}
 
-type dnode struct {
 	// val为空，表示可以push,如果时pop操作，表示队列空。
 	// val不为空，表所可以pop,如果是push操作，表示队列满了。
 	// 并且只能由push将val从nil变成非nil,
 	// 只能由pop将val从非niu变成nil.
-	val unsafe.Pointer
+	data []baseNode
 }
-
-type drQueue *struct{}
-
-// 表示空值
-var drEmpty = unsafe.Pointer(new(interface{}))
 
 func (q *DRQueue) onceInit() {
 	q.once.Do(func() {
@@ -239,13 +216,13 @@ func (q *DRQueue) onceInit() {
 
 func (q *DRQueue) init() {
 	if q.cap < 1 {
-		q.cap = defaultQueueSize
+		q.cap = DefauleSize
 	}
 	q.popID = q.pushID
 	q.len = 0
-	q.mod = minModU32(q.cap)
+	q.mod = modUint32(q.cap)
 	q.cap = q.mod + 1
-	q.data = make([]dnode, q.cap)
+	q.data = make([]baseNode, q.cap)
 }
 
 func (q *DRQueue) Init() {
@@ -282,7 +259,7 @@ func (q *DRQueue) Empty() bool {
 }
 
 // 根据pushID,popID获取进队，出队对应的slot
-func (q *DRQueue) getSlot(id uint32) *dnode {
+func (q *DRQueue) getSlot(id uint32) *baseNode {
 	return &q.data[int(id&q.mod)]
 }
 
@@ -292,21 +269,17 @@ func (q *DRQueue) Set(i interface{}) bool {
 	q.onceInit()
 
 	slot := q.getSlot(q.pushID)
-	if slot.val != nil {
+	if slot.load() != nil {
 		// 队列满了
 		return false
 	}
 	atomic.AddUint32(&q.len, 1)
 	atomic.AddUint32(&q.pushID, 1)
 	if i == nil {
-		i = drEmpty
+		i = empty
 	}
 	slot.store(i)
 	return true
-}
-
-func (n *dnode) store(i interface{}) {
-	atomic.StorePointer(&n.val, unsafe.Pointer(&i))
 }
 
 func (q *DRQueue) Get() (interface{}, bool) {
@@ -318,26 +291,18 @@ func (q *DRQueue) Get() (interface{}, bool) {
 	q.onceInit()
 
 	slot := q.getSlot(q.popID)
-	if slot.val == nil {
+	if slot.load() == nil {
 		// 队列空了
 		return nil, false
 	}
 	val := slot.load()
-	if val == drEmpty {
+	if val == empty {
 		val = nil
 	}
 	atomic.AddUint32(&q.len, ^uint32(0))
 	atomic.AddUint32(&q.popID, 1)
 	slot.free()
 	return val, true
-}
-
-func (n *dnode) load() interface{} {
-	return *(*interface{})(n.val)
-}
-
-func (n *dnode) free() {
-	n.val = nil
 }
 
 func (q *DRQueue) Push(i interface{}) {
@@ -349,36 +314,6 @@ func (q *DRQueue) Pop() interface{} {
 	return e
 }
 
-// ---------------------------	element in queue and stack		-----------------------------//
-
-// element stack,queue element
-type element struct {
-	// p    unsafe.Pointer
-	p    interface{}
-	next *element
-}
-
-func newElement(i interface{}) *element {
-	return &element{p: i}
-	// return &element{p: unsafe.Pointer(&i)}
-}
-
-func (n *element) load() interface{} {
-	return n.p
-	//return *(*interface{})(n.p)
-}
-
-func (n *element) store(i interface{}) {
-	n.p = i
-	//return *(*interface{})(n.p)
-}
-
-// 释放当前element,n.next需要先保存好。
-func (n *element) free() {
-	n.next = nil
-	n.p = nil
-}
-
 // ---------------------------		single mutex list queue		-----------------------------//
 
 // SLQueue unbounded list queue with one mutex
@@ -387,8 +322,8 @@ type SLQueue struct {
 	mu   sync.Mutex
 
 	len  int
-	head *element
-	tail *element
+	head *listNode
+	tail *listNode
 }
 
 func (q *SLQueue) onceInit() {
@@ -398,7 +333,7 @@ func (q *SLQueue) onceInit() {
 }
 
 func (q *SLQueue) init() {
-	q.head = &element{}
+	q.head = &listNode{}
 	q.tail = q.head
 	q.len = 0
 }
@@ -408,8 +343,8 @@ func (q *SLQueue) Init() {
 	defer q.mu.Unlock()
 	q.onceInit()
 
-	head := q.head // start element
-	tail := q.tail // end element
+	head := q.head // start listNode
+	tail := q.tail // end listNode
 	if head == tail {
 		return
 	}
@@ -431,7 +366,7 @@ func (q *SLQueue) Size() int {
 func (q *SLQueue) Push(i interface{}) {
 	q.mu.Lock()
 	q.onceInit()
-	slot := newElement(i)
+	slot := newListNode(i)
 	q.tail.next = slot
 	q.tail = slot
 	q.len++
@@ -470,34 +405,6 @@ type DLQueue struct {
 	tail unsafe.Pointer // 只能由push操作更改，其他操作只读
 }
 
-// element stack,queue element
-type dlnode struct {
-	// p    unsafe.Pointer
-	p    interface{}
-	next unsafe.Pointer
-}
-
-func newDLNode(i interface{}) *dlnode {
-	return &dlnode{p: i}
-	// return &dlnode{p: unsafe.Pointer(&i)}
-}
-
-func (n *dlnode) load() interface{} {
-	return n.p
-	//return *(*interface{})(n.p)
-}
-
-func (n *dlnode) store(i interface{}) {
-	n.p = i
-	//return *(*interface{})(n.p)
-}
-
-// 释放当前element,n.next需要先保存好。
-func (n *dlnode) free() {
-	n.next = nil
-	n.p = nil
-}
-
 func (q *DLQueue) onceInit() {
 	q.once.Do(func() {
 		q.init()
@@ -505,7 +412,7 @@ func (q *DLQueue) onceInit() {
 }
 
 func (q *DLQueue) init() {
-	q.head = unsafe.Pointer(newDLNode(nil))
+	q.head = unsafe.Pointer(newPrtNode(nil))
 	q.tail = q.head
 	q.len = 0
 }
@@ -517,8 +424,8 @@ func (q *DLQueue) Init() {
 	defer q.popMu.Unlock()
 
 	q.onceInit()
-	head := q.head // start element
-	tail := q.tail // end element
+	head := q.head // start listNode
+	tail := q.tail // end listNode
 	if head == tail {
 		return
 	}
@@ -526,7 +433,7 @@ func (q *DLQueue) Init() {
 	q.len = 0
 	// free queue [s ->...-> e]
 	for head != tail && head != nil {
-		node := (*dlnode)(head)
+		node := (*ptrNode)(head)
 		head = node.next
 		node.free()
 	}
@@ -546,9 +453,9 @@ func (q *DLQueue) Push(i interface{}) {
 	// tail只能由push更改，无竞争,pop只读
 	// tail := atomic.LoadPointer(&q.tail)
 	tail := q.tail
-	tailNode := (*dlnode)(tail)
+	tailNode := (*ptrNode)(tail)
 
-	slot := newDLNode(i)
+	slot := newPrtNode(i)
 	tailNode.next = unsafe.Pointer(slot)
 	atomic.AddUint32(&q.len, 1)
 
@@ -571,22 +478,11 @@ func (q *DLQueue) Pop() interface{} {
 		// 队列空，返回
 		return nil
 	}
-	headNode := (*dlnode)(q.head)
-	slot := (*dlnode)(headNode.next)
+	headNode := (*ptrNode)(q.head)
+	slot := (*ptrNode)(headNode.next)
 	q.head = headNode.next
 	val := slot.load()
 	atomic.AddUint32(&q.len, ^uint32(0))
 	headNode.free()
 	return val
-}
-
-// 溢出环形计算需要，得出2^n-1。(2^n>=u,具体可见kfifo）
-func minModU32(u uint32) uint32 {
-	u -= 1 //兼容0, as min as ,128->127 !255
-	u |= u >> 1
-	u |= u >> 2
-	u |= u >> 4
-	u |= u >> 8  // 32位类型已经足够
-	u |= u >> 16 // 64位
-	return u
 }

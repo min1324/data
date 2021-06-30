@@ -21,14 +21,13 @@ type testFunc func(*testing.T, SQInterface)
 func testStack(t *testing.T, test test) {
 	for _, m := range [...]SQInterface{
 		// &UnsafeQueue{},
-		// &queue.DLQueue{},
-		// &queue.DRQueue{},
-		// &queue.LAQueue{},
-		// &queue.LFQueue{},
-		// &queue.SAQueue{},
-		// &queue.SLQueue{},
-		// &queue.SRQueue{},
-		// &queue.Slice{},
+		&queue.DLQueue{},
+		&queue.DRQueue{},
+		&queue.LLQueue{},
+		&queue.SAQueue{},
+		&queue.SLQueue{},
+		&queue.SRQueue{},
+		&queue.Slice{},
 
 		// &MutexStack{},
 		// &stack.Stack{},
@@ -36,7 +35,7 @@ func testStack(t *testing.T, test test) {
 		t.Run(fmt.Sprintf("%T", m), func(t *testing.T) {
 			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(SQInterface)
 			m.Init()
-			if q, ok := m.(*queue.LAQueue); ok {
+			if q, ok := m.(*queue.LRQueue); ok {
 				q.InitWith(queueMaxSize)
 			}
 			if q, ok := m.(*queue.DRQueue); ok {
