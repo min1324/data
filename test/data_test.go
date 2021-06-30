@@ -21,13 +21,13 @@ type testFunc func(*testing.T, SQInterface)
 func testStack(t *testing.T, test test) {
 	for _, m := range [...]SQInterface{
 		// &UnsafeQueue{},
-		// &queue.AQueue{},
 		// &queue.DLQueue{},
 		// &queue.DRQueue{},
+		// &queue.LAQueue{},
 		// &queue.LFQueue{},
 		// &queue.SAQueue{},
 		// &queue.SLQueue{},
-		&queue.SRQueue{},
+		// &queue.SRQueue{},
 		// &queue.Slice{},
 
 		// &MutexStack{},
