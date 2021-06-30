@@ -35,7 +35,7 @@ var mapOps = [...]mapOp{opPush, opPop}
 268435456	28
 */
 const queueMaxSize = 1 << 24 // queue max size
-const prevPushSize = 1 << 23 // queue previous push
+const prevPushSize = 1 << 20 // queue previous push
 
 func randCall(m SQInterface) {
 	op := mapOps[rand.Intn(len(mapOps))]
@@ -57,13 +57,14 @@ type bench struct {
 func benchMap(b *testing.B, bench bench) {
 	for _, m := range [...]SQInterface{
 		// &UnsafeQueue{},
-		// &MutexQueue{},
-		&queue.Queue{},
+		//&MutexQueue{},
+		&queue.LFQueue{},
+		&queue.AQueue{},
+
 		// &MutexSlice{},
 		// &queue.Slice{},
 		// &MutexStack{},
 		// &stack.Stack{},
-		&queue.AQueue{},
 	} {
 		b.Run(fmt.Sprintf("%T", m), func(b *testing.B) {
 			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(SQInterface)
@@ -246,7 +247,6 @@ func BenchmarkConcurrentPushPop(b *testing.B) {
 						return
 					default:
 						m.Push(1)
-
 					}
 				}
 			}()
@@ -256,7 +256,40 @@ func BenchmarkConcurrentPushPop(b *testing.B) {
 		},
 	})
 }
+func BenchmarkConcurrentPopPush(b *testing.B) {
 
+	benchMap(b, bench{
+		setup: func(_ *testing.B, m SQInterface) {
+			if _, ok := m.(*UnsafeQueue); ok {
+				b.Skip("UnsafeQueue can not test concurrent.")
+			}
+		},
+		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
+			var wg sync.WaitGroup
+			exit := make(chan struct{}, 1)
+			defer func() {
+				close(exit)
+				wg.Wait()
+				exit = nil
+			}()
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for {
+					select {
+					case <-exit:
+						return
+					default:
+						m.Pop()
+					}
+				}
+			}()
+			for ; pb.Next(); i++ {
+				m.Push(1)
+			}
+		},
+	})
+}
 func BenchmarkConcurrentMostlyPush(b *testing.B) {
 
 	benchMap(b, bench{
@@ -326,9 +359,20 @@ func BenchmarkConcurrentMostlyPop(b *testing.B) {
 					}
 				}
 			}()
-
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for {
+					select {
+					case <-exit:
+						return
+					default:
+						m.Pop()
+					}
+				}
+			}()
 			for ; pb.Next(); i++ {
-				m.Pop()
+				m.Size()
 			}
 		},
 	})

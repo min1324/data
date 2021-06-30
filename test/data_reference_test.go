@@ -142,6 +142,7 @@ func (q *MutexQueue) Push(i interface{}) {
 	slot := newNode(i)
 	q.tail.next = slot
 	q.tail = slot
+	q.count++
 	q.mu.Unlock()
 }
 
@@ -158,6 +159,7 @@ func (q *MutexQueue) Pop() interface{} {
 	slot := q.head
 	q.head = q.head.next
 	slot.next = nil
+	q.count--
 	return q.head.load()
 }
 

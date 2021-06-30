@@ -27,7 +27,8 @@ func testStack(t *testing.T, test test) {
 		// &queue.Slice{},
 		// &MutexStack{},
 		// &stack.Stack{},
-		&queue.AQueue{},
+		// &queue.AQueue{},
+		&queue.LFQueue{},
 	} {
 		t.Run(fmt.Sprintf("%T", m), func(t *testing.T) {
 			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(SQInterface)
@@ -57,11 +58,21 @@ func TestInit(t *testing.T) {
 			if s.Pop() != nil {
 				t.Fatalf("Init Pop != nil :%v", s.Pop())
 			}
+			s.Push("a")
+			s.Push("a")
+			s.Push("a")
+			s.Init()
+			if s.Size() != 0 {
+				t.Fatalf("after push Init err,size!=0,%d", s.Size())
+			}
+			if s.Pop() != nil {
+				t.Fatalf("after push Init Pop != nil :%v", s.Pop())
+			}
 			p := 1
 			s.Push(p)
 			v := s.Pop()
-			if v.(int) != p {
-				t.Fatalf("init push want:%d, real:%v", p, v)
+			if v != p {
+				t.Fatalf("push want:%d, real:%v", p, v)
 			}
 			var null = unsafe.Pointer(nil)
 			s.Push(null)
@@ -77,7 +88,56 @@ func TestInit(t *testing.T) {
 			}
 		},
 	})
+}
 
+func TestPush(t *testing.T) {
+	const maxSize = 1 << 10
+
+	testStack(t, test{
+		setup: func(t *testing.T, s SQInterface) {
+			if q, ok := s.(*queue.AQueue); ok {
+				q.InitWith(maxSize)
+			}
+		},
+		perG: func(t *testing.T, s SQInterface) {
+			for i := 0; i < maxSize; i++ {
+				s.Push(i)
+			}
+
+			if s.Size() != maxSize {
+				t.Fatalf("TestConcurrentPush err,push:%d,real:%d", maxSize, s.Size())
+			}
+		},
+	})
+}
+
+func TestPop(t *testing.T) {
+	const maxSize = 1 << 10
+
+	testStack(t, test{
+		setup: func(t *testing.T, s SQInterface) {
+			if q, ok := s.(*queue.AQueue); ok {
+				q.InitWith(maxSize)
+			}
+		},
+		perG: func(t *testing.T, s SQInterface) {
+			for i := 0; i < maxSize; i++ {
+				s.Push(i)
+			}
+
+			sum := 0
+			for i := 0; i < maxSize; i++ {
+				t := s.Pop()
+				if t != nil {
+					sum += 1
+				}
+			}
+
+			if s.Size()+sum != maxSize {
+				t.Fatalf("TestPop err,push:%d,pop:%d,size:%d", maxSize, sum, s.Size())
+			}
+		},
+	})
 }
 
 func TestConcurrentPush(t *testing.T) {
@@ -128,8 +188,10 @@ func TestConcurrentPop(t *testing.T) {
 		perG: func(t *testing.T, s SQInterface) {
 			var wg sync.WaitGroup
 			var sum int64
+			var pushSum int64
 			for i := 0; i < maxSize; i++ {
 				s.Push(i)
+				pushSum += 1
 			}
 
 			for i := 0; i < maxGo; i++ {
@@ -146,8 +208,8 @@ func TestConcurrentPop(t *testing.T) {
 			}
 			wg.Wait()
 
-			if sum != int64(maxSize) {
-				t.Fatalf("TestConcurrentPush err,push:%d,pop:%d", maxSize, sum)
+			if sum+int64(s.Size()) != int64(pushSum) {
+				t.Fatalf("TestConcurrentPush err,push:%d,pop:%d,size:%d", pushSum, sum, s.Size())
 			}
 		},
 	})
