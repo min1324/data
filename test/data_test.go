@@ -21,17 +21,26 @@ type testFunc func(*testing.T, SQInterface)
 func testStack(t *testing.T, test test) {
 	for _, m := range [...]SQInterface{
 		// &UnsafeQueue{},
-		// &MutexQueue{},
-		// &queue.Queue{},
 		// &MutexSlice{},
 		// &queue.Slice{},
+		// &queue.AQueue{},
+		// &queue.LFQueue{},
+		// &queue.DRQueue{},
+		&queue.DLQueue{},
+
 		// &MutexStack{},
 		// &stack.Stack{},
-		// &queue.AQueue{},
-		&queue.LFQueue{},
 	} {
 		t.Run(fmt.Sprintf("%T", m), func(t *testing.T) {
 			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(SQInterface)
+			m.Init()
+			if q, ok := m.(*queue.AQueue); ok {
+				q.InitWith(queueMaxSize)
+			}
+			if q, ok := m.(*queue.DRQueue); ok {
+				q.InitWith(queueMaxSize)
+			}
+
 			if test.setup != nil {
 				test.setup(t, m)
 			}
@@ -41,10 +50,12 @@ func testStack(t *testing.T, test test) {
 }
 
 func TestInit(t *testing.T) {
+
 	testStack(t, test{
 		setup: func(t *testing.T, s SQInterface) {
 		},
 		perG: func(t *testing.T, s SQInterface) {
+			// 初始化测试，
 			if s.Size() != 0 {
 				t.Fatalf("init size != 0 :%d", s.Size())
 			}
@@ -68,23 +79,58 @@ func TestInit(t *testing.T) {
 			if s.Pop() != nil {
 				t.Fatalf("after push Init Pop != nil :%v", s.Pop())
 			}
+
+			s.Init()
+			// push,pop测试
 			p := 1
 			s.Push(p)
+			if s.Size() != 1 {
+				t.Fatalf("after push err,size!=1,%d", s.Size())
+			}
 			v := s.Pop()
 			if v != p {
 				t.Fatalf("push want:%d, real:%v", p, v)
 			}
-			var null = unsafe.Pointer(nil)
+
+			// size 测试
+			s.Init()
+			var n = 10
+			for i := 0; i < n; i++ {
+				s.Push(i)
+			}
+			if s.Size() != n {
+				t.Fatalf("Size want:%d, real:%v", n, s.Size())
+			}
+
+			// 储存顺序测试,数组队列可能满
+			// stack顺序反过来
+			s.Init()
+			array := [...]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
+			for i := range array {
+				s.Push(i)
+				array[i] = i // queue用这种
+				// array[len(array)-i-1] = i  // stack用这种方式
+			}
+			for i := 0; i < len(array); i++ {
+				v := s.Pop()
+				if v != array[i] {
+					t.Fatalf("array want:%d, real:%v", array[i], v)
+				}
+			}
+
+			s.Init()
+			// 空值测试
+			var nullPtrs = unsafe.Pointer(nil)
+			s.Push(nullPtrs)
+			np := s.Pop()
+			if np != nullPtrs {
+				t.Fatalf("push nil want:%v, real:%v", nullPtrs, np)
+			}
+			var null = new(interface{})
 			s.Push(null)
 			nv := s.Pop()
 			if nv != null {
 				t.Fatalf("push nil want:%v, real:%v", null, nv)
-			}
-			nullp := new(interface{})
-			s.Push(nullp)
-			np := s.Pop()
-			if np != nullp {
-				t.Fatalf("push interface want:%v, real:%v", nullp, np)
 			}
 		},
 	})
@@ -95,9 +141,6 @@ func TestPush(t *testing.T) {
 
 	testStack(t, test{
 		setup: func(t *testing.T, s SQInterface) {
-			if q, ok := s.(*queue.AQueue); ok {
-				q.InitWith(maxSize)
-			}
 		},
 		perG: func(t *testing.T, s SQInterface) {
 			for i := 0; i < maxSize; i++ {
@@ -113,12 +156,8 @@ func TestPush(t *testing.T) {
 
 func TestPop(t *testing.T) {
 	const maxSize = 1 << 10
-
 	testStack(t, test{
 		setup: func(t *testing.T, s SQInterface) {
-			if q, ok := s.(*queue.AQueue); ok {
-				q.InitWith(maxSize)
-			}
 		},
 		perG: func(t *testing.T, s SQInterface) {
 			for i := 0; i < maxSize; i++ {
@@ -149,9 +188,6 @@ func TestConcurrentPush(t *testing.T) {
 			if _, ok := s.(*UnsafeQueue); ok {
 				t.Skip("UnsafeQueue can not test concurrent.")
 			}
-			if q, ok := s.(*queue.AQueue); ok {
-				q.InitWith(maxSize)
-			}
 		},
 		perG: func(t *testing.T, s SQInterface) {
 			var wg sync.WaitGroup
@@ -180,9 +216,6 @@ func TestConcurrentPop(t *testing.T) {
 		setup: func(t *testing.T, s SQInterface) {
 			if _, ok := s.(*UnsafeQueue); ok {
 				t.Skip("UnsafeQueue can not test concurrent.")
-			}
-			if q, ok := s.(*queue.AQueue); ok {
-				q.InitWith(maxSize)
 			}
 		},
 		perG: func(t *testing.T, s SQInterface) {
@@ -223,9 +256,6 @@ func TestConcurrentPushPop(t *testing.T) {
 		setup: func(t *testing.T, s SQInterface) {
 			if _, ok := s.(*UnsafeQueue); ok {
 				t.Skip("UnsafeQueue can not test concurrent.")
-			}
-			if q, ok := s.(*queue.AQueue); ok {
-				q.InitWith(maxSize)
 			}
 		},
 		perG: func(t *testing.T, s SQInterface) {

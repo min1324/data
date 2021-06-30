@@ -8,8 +8,8 @@ import (
 
 // Stack a lock-free concurrent FILO stack.
 type Stack struct {
-	top   unsafe.Pointer // point to the latest value pushed.
-	count uintptr        // stack value num.
+	top unsafe.Pointer // point to the latest value pushed.
+	len uintptr        // stack value num.
 }
 
 // New return an empty Stack
@@ -43,6 +43,7 @@ func (s *Stack) Init() {
 				node := (*node)(e)
 				e = node.next
 				node.next = nil
+				atomic.AddUintptr(&s.len, ^uintptr(0))
 			}
 			runtime.GC()
 			return
@@ -52,7 +53,7 @@ func (s *Stack) Init() {
 
 // Size stack element's number
 func (s *Stack) Size() int {
-	return int(atomic.LoadUintptr(&s.count))
+	return int(atomic.LoadUintptr(&s.len))
 }
 
 // Push puts the given value at the top of the stack.
@@ -61,7 +62,7 @@ func (s *Stack) Push(i interface{}) {
 	for {
 		slot.next = atomic.LoadPointer(&s.top)
 		if cas(&s.top, slot.next, unsafe.Pointer(slot)) {
-			atomic.AddUintptr(&s.count, 1)
+			atomic.AddUintptr(&s.len, 1)
 			break
 		}
 	}
@@ -78,7 +79,7 @@ func (s *Stack) Pop() interface{} {
 		slot := (*node)(top)
 		if cas(&s.top, top, slot.next) {
 			slot.next = nil
-			atomic.AddUintptr(&s.count, ^uintptr(0))
+			atomic.AddUintptr(&s.len, ^uintptr(0))
 			return slot.load()
 		}
 	}

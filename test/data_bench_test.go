@@ -58,8 +58,9 @@ func benchMap(b *testing.B, bench bench) {
 	for _, m := range [...]SQInterface{
 		// &UnsafeQueue{},
 		//&MutexQueue{},
-		&queue.LFQueue{},
-		&queue.AQueue{},
+		// &queue.LFQueue{},
+		// &queue.AQueue{},
+		&queue.DLQueue{},
 
 		// &MutexSlice{},
 		// &queue.Slice{},
@@ -72,6 +73,11 @@ func benchMap(b *testing.B, bench bench) {
 			if q, ok := m.(*queue.AQueue); ok {
 				q.InitWith(queueMaxSize)
 			}
+			if q, ok := m.(*queue.DRQueue); ok {
+				q.InitWith(queueMaxSize)
+			}
+
+			// setup
 			if bench.setup != nil {
 				bench.setup(b, m)
 			}
@@ -326,7 +332,7 @@ func BenchmarkConcurrentMostlyPush(b *testing.B) {
 	})
 }
 
-func BenchmarkConcurrentMostlyPop(b *testing.B) {
+func BenchmarkConcurrent(b *testing.B) {
 	const stackSize = 1 << 10
 	const push, pop = 128, 1
 

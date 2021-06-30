@@ -88,9 +88,12 @@ func (q *AQueue) init() {
 	if q.cap < 1 {
 		q.cap = defaultQueueSize
 	}
+	q.popID = q.pushID
 	q.mod = minMod(q.cap)
 	q.cap = q.mod + 1
-	q.data = make([]anode, q.cap)
+	q.len = 0
+	data := make([]anode, q.cap)
+	q.data = data
 }
 
 func (q *AQueue) Init() {
@@ -184,14 +187,14 @@ func (q *AQueue) Get() (e interface{}, ok bool) {
 			break
 		}
 	}
+	e = slot.load()
 	// 读取数据
-	value := slot.load()
 	atomic.AddUintptr(&q.len, ^uintptr(0))
 
 	// 更新pushStat为can_Set_PushStat, Set()可以写入了
 	atomic.StoreUintptr(&slot.pushStat, can_Set_PushStat)
 
-	return value, true
+	return e, true
 }
 
 func (n *anode) load() interface{} {

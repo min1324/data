@@ -4,6 +4,8 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
+
+	"github.com/min1324/data/queue"
 )
 
 // use for slice
@@ -91,78 +93,6 @@ func (s *MutexStack) Pop() interface{} {
 
 // -------------------------------------	queue	------------------------------------------- //
 
-// MutexQueue stack with mutex
-type MutexQueue struct {
-	head, tail *node
-	count      int
-	mu         sync.Mutex
-	once       sync.Once
-}
-
-func (q *MutexQueue) onceInit() {
-	q.once.Do(func() {
-		q.init()
-	})
-}
-
-func (q *MutexQueue) init() {
-	q.head = &node{}
-	q.tail = q.head
-	q.count = 0
-}
-
-func (q *MutexQueue) Init() {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	q.onceInit()
-
-	s := q.head // start node
-	e := q.tail // end node
-	if s == e {
-		return
-	}
-	q.head = q.tail
-	q.count = 0
-	// free queue [s ->...-> e]
-	for s != e {
-		node := s
-		s = node.next
-		node.next = nil
-	}
-	return
-}
-
-func (q *MutexQueue) Size() int {
-	return q.count
-}
-
-func (q *MutexQueue) Push(i interface{}) {
-	q.mu.Lock()
-	q.onceInit()
-	slot := newNode(i)
-	q.tail.next = slot
-	q.tail = slot
-	q.count++
-	q.mu.Unlock()
-}
-
-func (q *MutexQueue) Pop() interface{} {
-	if q.head == q.tail {
-		return nil
-	}
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	q.onceInit()
-	if q.head.next == nil {
-		return nil
-	}
-	slot := q.head
-	q.head = q.head.next
-	slot.next = nil
-	q.count--
-	return q.head.load()
-}
-
 // MutexSlice an array of queue
 // each time have concurrent Add pushID
 // but only one can get and add popID
@@ -173,14 +103,14 @@ type MutexSlice struct {
 	popID  uintptr // current pop id
 	pushID uintptr // current push id
 
-	dirty [mod + 1]MutexQueue
+	dirty [mod + 1]queue.SLQueue
 
 	pushMu sync.Mutex
 	popMu  sync.Mutex
 	once   sync.Once
 }
 
-func (s *MutexSlice) hash(id uintptr) *MutexQueue {
+func (s *MutexSlice) hash(id uintptr) *queue.SLQueue {
 	return &s.dirty[id&mod]
 }
 
@@ -247,7 +177,7 @@ func (s *MutexSlice) Pop() interface{} {
 // UnsafeQueue queue without mutex
 type UnsafeQueue struct {
 	head, tail *node
-	count      int
+	len        int
 	once       sync.Once
 }
 
@@ -260,30 +190,30 @@ func (q *UnsafeQueue) onceInit() {
 func (q *UnsafeQueue) init() {
 	q.head = &node{}
 	q.tail = q.head
-	q.count = 0
+	q.len = 0
 }
 
 func (q *UnsafeQueue) Init() {
 	q.onceInit()
 
-	s := q.head // start node
-	e := q.tail // end node
-	if s == e {
+	head := q.head // start element
+	tail := q.tail // end element
+	if head == tail {
 		return
 	}
 	q.head = q.tail
-	q.count = 0
+	q.len = 0
 	// free queue [s ->...-> e]
-	for s != e {
-		node := s
-		s = node.next
-		node.next = nil
+	for head != tail && head != nil {
+		el := head
+		head = el.next
+		el.next = nil
 	}
 	return
 }
 
 func (q *UnsafeQueue) Size() int {
-	return q.count
+	return q.len
 }
 
 func (q *UnsafeQueue) Push(i interface{}) {
@@ -291,6 +221,7 @@ func (q *UnsafeQueue) Push(i interface{}) {
 	slot := newNode(i)
 	q.tail.next = slot
 	q.tail = slot
+	q.len += 1
 }
 
 func (q *UnsafeQueue) Pop() interface{} {
@@ -301,5 +232,6 @@ func (q *UnsafeQueue) Pop() interface{} {
 	slot := q.head
 	q.head = q.head.next
 	slot.next = nil
+	q.len -= 1
 	return q.head.load()
 }
