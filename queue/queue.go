@@ -6,6 +6,18 @@ import (
 	"unsafe"
 )
 
+/*
+第一个字母:
+single mutex	=>	S
+dobule mutex	=>	D
+lock-free		=>	L
+
+第二个字母:
+list	=>	L
+array	=>	A
+ring array	=>	R
+*/
+
 // LFQueue is a lock-free unbounded linked list queue.
 type LFQueue struct {
 	// 声明队列后，如果没有调用Init(),队列不能使用

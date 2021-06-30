@@ -56,21 +56,22 @@ type bench struct {
 
 func benchMap(b *testing.B, bench bench) {
 	for _, m := range [...]SQInterface{
+		// queue
 		// &UnsafeQueue{},
-		//&MutexQueue{},
+		// &queue.LAQueue{},
 		// &queue.LFQueue{},
-		// &queue.AQueue{},
-		&queue.DLQueue{},
-
+		// &queue.DLQueue{},
 		// &MutexSlice{},
 		// &queue.Slice{},
+
+		// // stack
 		// &MutexStack{},
 		// &stack.Stack{},
 	} {
 		b.Run(fmt.Sprintf("%T", m), func(b *testing.B) {
 			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(SQInterface)
 			m.Init()
-			if q, ok := m.(*queue.AQueue); ok {
+			if q, ok := m.(*queue.LAQueue); ok {
 				q.InitWith(queueMaxSize)
 			}
 			if q, ok := m.(*queue.DRQueue); ok {
@@ -341,7 +342,7 @@ func BenchmarkConcurrent(b *testing.B) {
 			if _, ok := m.(*UnsafeQueue); ok {
 				b.Skip("UnsafeQueue can not test concurrent.")
 			}
-			if q, ok := m.(*queue.AQueue); ok {
+			if q, ok := m.(*queue.LAQueue); ok {
 				q.InitWith(queueMaxSize)
 			}
 		},

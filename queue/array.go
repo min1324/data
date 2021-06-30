@@ -7,8 +7,8 @@ import (
 	"unsafe"
 )
 
-// AQueue array queue
-type AQueue struct {
+// LAQueue array queue
+type LAQueue struct {
 	// 声明队列后，如果没有调用Init(),队列不能使用
 	// 为解决这个问题，加入一次性操作。
 	// 能在队列声明后，调用push或者pop操作前，初始化队列。
@@ -74,17 +74,17 @@ const (
 // }
 
 const (
-	defaultQueueSize = 1 << 8
+	defaultQueueSize = 1 << 10
 )
 
 // 一次性初始化
-func (q *AQueue) onceInit() {
+func (q *LAQueue) onceInit() {
 	q.once.Do(func() {
 		q.init()
 	})
 }
 
-func (q *AQueue) init() {
+func (q *LAQueue) init() {
 	if q.cap < 1 {
 		q.cap = defaultQueueSize
 	}
@@ -96,13 +96,13 @@ func (q *AQueue) init() {
 	q.data = data
 }
 
-func (q *AQueue) Init() {
+func (q *LAQueue) Init() {
 	q.InitWith()
 }
 
 // InitWith 初始化长度为cap的queue,
 // 如果未提供，则使用默认值: 1<<8
-func (q *AQueue) InitWith(cap ...int) {
+func (q *LAQueue) InitWith(cap ...int) {
 	if len(cap) > 0 && cap[0] > 0 {
 		q.cap = uintptr(cap[0])
 	}
@@ -110,12 +110,12 @@ func (q *AQueue) InitWith(cap ...int) {
 }
 
 // 当前元素个数
-func (q *AQueue) Size() int {
+func (q *LAQueue) Size() int {
 	return int(q.len)
 }
 
 // 根据pushID,popID获取进队，出队对应的slot
-func (q *AQueue) getSlot(id uintptr) *anode {
+func (q *LAQueue) getSlot(id uintptr) *anode {
 	return &q.data[int(id&q.mod)]
 }
 
@@ -123,7 +123,7 @@ func (q *AQueue) getSlot(id uintptr) *anode {
 // if slot.stat == canPop, mean's not any more empty slot
 // return
 // push only done in can_set,
-func (q *AQueue) Set(i interface{}) (ok bool) {
+func (q *LAQueue) Set(i interface{}) (ok bool) {
 	q.onceInit()
 	var slot *anode
 	// 获取 slot
@@ -163,7 +163,7 @@ func (n *anode) store(i interface{}) {
 }
 
 // 从队列中获取
-func (q *AQueue) Get() (e interface{}, ok bool) {
+func (q *LAQueue) Get() (e interface{}, ok bool) {
 	q.onceInit()
 	var slot *anode
 	// 获取 slot
@@ -204,7 +204,7 @@ func (n *anode) load() interface{} {
 // Push put i into queue,
 // wait until it success.
 // use carefuly,if queue full, push still waitting.
-func (q *AQueue) Push(i interface{}) {
+func (q *LAQueue) Push(i interface{}) {
 	for ok := q.Set(i); !ok; {
 		runtime.Gosched()
 		ok = q.Set(i)
@@ -214,36 +214,36 @@ func (q *AQueue) Push(i interface{}) {
 }
 
 // not use yet
-func (q *AQueue) grow() bool {
+func (q *LAQueue) grow() bool {
 	// TODO grow queue data
 	return false
 }
 
 // Pop attempt to pop one element,
 // if queue empty, it got nil.
-func (q *AQueue) Pop() interface{} {
+func (q *LAQueue) Pop() interface{} {
 	e, _ := q.Get()
 	return e
 }
 
 // queue's len
-func (q *AQueue) Len() int {
+func (q *LAQueue) Len() int {
 	return int(q.len)
 }
 
 // queue's cap
-func (q *AQueue) Cap() int {
+func (q *LAQueue) Cap() int {
 	return int(q.cap)
 }
 
 // 队列是否空
-func (q *AQueue) Empty() bool {
+func (q *LAQueue) Empty() bool {
 	return atomic.LoadUintptr(&q.len) == 0
 	//	return (q.popID & q.mod) == (q.pushID & q.mod)
 }
 
 // 队列是否满
-func (q *AQueue) Full() bool {
+func (q *LAQueue) Full() bool {
 	return atomic.LoadUintptr(&q.len) == atomic.LoadUintptr(&q.cap)
 	// return (q.popID&q.mod + 1) == (q.pushID & q.mod)
 }

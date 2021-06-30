@@ -21,12 +21,14 @@ type testFunc func(*testing.T, SQInterface)
 func testStack(t *testing.T, test test) {
 	for _, m := range [...]SQInterface{
 		// &UnsafeQueue{},
-		// &MutexSlice{},
-		// &queue.Slice{},
 		// &queue.AQueue{},
-		// &queue.LFQueue{},
+		// &queue.DLQueue{},
 		// &queue.DRQueue{},
-		&queue.DLQueue{},
+		// &queue.LFQueue{},
+		// &queue.SAQueue{},
+		// &queue.SLQueue{},
+		&queue.SRQueue{},
+		// &queue.Slice{},
 
 		// &MutexStack{},
 		// &stack.Stack{},
@@ -34,10 +36,13 @@ func testStack(t *testing.T, test test) {
 		t.Run(fmt.Sprintf("%T", m), func(t *testing.T) {
 			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(SQInterface)
 			m.Init()
-			if q, ok := m.(*queue.AQueue); ok {
+			if q, ok := m.(*queue.LAQueue); ok {
 				q.InitWith(queueMaxSize)
 			}
 			if q, ok := m.(*queue.DRQueue); ok {
+				q.InitWith(queueMaxSize)
+			}
+			if q, ok := m.(*queue.SRQueue); ok {
 				q.InitWith(queueMaxSize)
 			}
 
@@ -180,7 +185,7 @@ func TestPop(t *testing.T) {
 }
 
 func TestConcurrentPush(t *testing.T) {
-	const maxGo, maxNum = 4, 1 << 10
+	const maxGo, maxNum = 4, 1 << 8
 	const maxSize = maxGo * maxNum
 
 	testStack(t, test{
