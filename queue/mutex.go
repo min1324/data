@@ -38,27 +38,28 @@ func (q *SAQueue) Size() int {
 	return len(q.data)
 }
 
-func (q *SAQueue) Push(i interface{}) {
+func (q *SAQueue) EnQueue(i interface{}) bool {
 	q.mu.Lock()
 	q.onceInit()
 	q.data = append(q.data, i)
 	q.mu.Unlock()
+	return true
 }
 
-func (q *SAQueue) Pop() interface{} {
+func (q *SAQueue) DeQueue() (val interface{}, ok bool) {
 	if q.Size() == 0 {
-		return nil
+		return nil, false
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.onceInit()
 
 	if q.Size() == 0 {
-		return nil
+		return nil, false
 	}
-	slot := q.data[0]
+	val = q.data[0]
 	q.data = q.data[1:]
-	return slot
+	return val, true
 }
 
 // ---------------------------		single mutex ring queue		-----------------------------//
@@ -136,7 +137,7 @@ func (q *SRQueue) getSlot(id uint32) *baseNode {
 	return &q.data[int(id&q.mod)]
 }
 
-func (q *SRQueue) Set(i interface{}) bool {
+func (q *SRQueue) EnQueue(i interface{}) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.onceInit()
@@ -150,7 +151,7 @@ func (q *SRQueue) Set(i interface{}) bool {
 	return true
 }
 
-func (q *SRQueue) Get() (interface{}, bool) {
+func (q *SRQueue) DeQueue() (val interface{}, ok bool) {
 	if q.Empty() {
 		return nil, false
 	}
@@ -162,7 +163,7 @@ func (q *SRQueue) Get() (interface{}, bool) {
 		return nil, false
 	}
 	slot := q.getSlot(q.popID)
-	val := slot.load()
+	val = slot.load()
 	q.popID += 1
 	q.len -= 1
 	slot.free()
@@ -170,12 +171,12 @@ func (q *SRQueue) Get() (interface{}, bool) {
 }
 
 func (q *SRQueue) Push(i interface{}) {
-	for !q.Set(i) {
+	for !q.EnQueue(i) {
 	}
 }
 
 func (q *SRQueue) Pop() interface{} {
-	e, _ := q.Get()
+	e, _ := q.DeQueue()
 	return e
 }
 
@@ -263,7 +264,7 @@ func (q *DRQueue) getSlot(id uint32) *baseNode {
 	return &q.data[int(id&q.mod)]
 }
 
-func (q *DRQueue) Set(i interface{}) bool {
+func (q *DRQueue) EnQueue(i interface{}) bool {
 	q.pushMu.Lock()
 	defer q.pushMu.Unlock()
 	q.onceInit()
@@ -282,7 +283,7 @@ func (q *DRQueue) Set(i interface{}) bool {
 	return true
 }
 
-func (q *DRQueue) Get() (interface{}, bool) {
+func (q *DRQueue) DeQueue() (val interface{}, ok bool) {
 	if q.Empty() {
 		return nil, false
 	}
@@ -295,7 +296,7 @@ func (q *DRQueue) Get() (interface{}, bool) {
 		// 队列空了
 		return nil, false
 	}
-	val := slot.load()
+	val = slot.load()
 	if val == empty {
 		val = nil
 	}
@@ -306,11 +307,11 @@ func (q *DRQueue) Get() (interface{}, bool) {
 }
 
 func (q *DRQueue) Push(i interface{}) {
-	q.Set(i)
+	q.EnQueue(i)
 }
 
 func (q *DRQueue) Pop() interface{} {
-	e, _ := q.Get()
+	e, _ := q.DeQueue()
 	return e
 }
 
@@ -363,7 +364,7 @@ func (q *SLQueue) Size() int {
 	return q.len
 }
 
-func (q *SLQueue) Push(i interface{}) {
+func (q *SLQueue) EnQueue(i interface{}) bool {
 	q.mu.Lock()
 	q.onceInit()
 	slot := newListNode(i)
@@ -371,24 +372,25 @@ func (q *SLQueue) Push(i interface{}) {
 	q.tail = slot
 	q.len++
 	q.mu.Unlock()
+	return true
 }
 
-func (q *SLQueue) Pop() interface{} {
+func (q *SLQueue) DeQueue() (val interface{}, ok bool) {
 	if q.head == q.tail {
-		return nil
+		return nil, false
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.onceInit()
 	if q.head.next == nil {
-		return nil
+		return nil, false
 	}
 	slot := q.head
 	q.head = q.head.next
-	val := q.head.load()
+	val = q.head.load()
 	slot.free()
 	q.len--
-	return val
+	return val, true
 }
 
 // 双锁链表队列
@@ -444,7 +446,7 @@ func (q *DLQueue) Size() int {
 	return int(q.len)
 }
 
-func (q *DLQueue) Push(i interface{}) {
+func (q *DLQueue) EnQueue(i interface{}) bool {
 	q.pushMu.Lock()
 	defer q.pushMu.Unlock()
 	q.onceInit()
@@ -462,11 +464,12 @@ func (q *DLQueue) Push(i interface{}) {
 	// 更新tail
 	q.tail = unsafe.Pointer(slot)
 	// atomic.StorePointer(&q.tail, unsafe.Pointer(slot))
+	return true
 }
 
-func (q *DLQueue) Pop() interface{} {
+func (q *DLQueue) DeQueue() (val interface{}, ok bool) {
 	if q.head == q.tail {
-		return nil
+		return nil, false
 	}
 	q.popMu.Lock()
 	defer q.popMu.Unlock()
@@ -476,13 +479,13 @@ func (q *DLQueue) Pop() interface{} {
 	// 只需保证队列非空即可出队.
 	if q.head == q.tail {
 		// 队列空，返回
-		return nil
+		return nil, false
 	}
 	headNode := (*ptrNode)(q.head)
 	slot := (*ptrNode)(headNode.next)
 	q.head = headNode.next
-	val := slot.load()
+	val = slot.load()
 	atomic.AddUint32(&q.len, ^uint32(0))
 	headNode.free()
-	return val
+	return val, true
 }

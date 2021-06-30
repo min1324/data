@@ -118,10 +118,9 @@ func (q *LLQueue) Init() {
 	}
 }
 
-// Push puts the given value at the tail of the queue.
-func (q *LLQueue) Push(i interface{}) {
+func (q *LLQueue) EnQueue(val interface{}) bool {
 	q.onceInit()
-	slot := newStateNode(i)
+	slot := newStateNode(val)
 	slotPtr := unsafe.Pointer(slot)
 	for {
 		// 先取一下尾指针和尾指针的next
@@ -151,11 +150,12 @@ func (q *LLQueue) Push(i interface{}) {
 			break
 		}
 	}
+	return true
 }
 
 // Pop removes and returns the value at the head of the queue.
 // It returns nil if the queue is empty.
-func (q *LLQueue) Pop() interface{} {
+func (q *LLQueue) DeQueue() (val interface{}, ok bool) {
 	q.onceInit()
 	for {
 		//取出头指针，尾指针，和第一个node指针
@@ -173,7 +173,7 @@ func (q *LLQueue) Pop() interface{} {
 			// 队列可能空，可能tail落后。
 			if headNext == nil {
 				// 空队列返回
-				return nil
+				return nil, false
 			}
 			// 此时head,tail指向同一个位置，并且有新增node
 			// tail指针落后了,需要提升tail到下一个node,(tailNext==headNext)
@@ -188,7 +188,7 @@ func (q *LLQueue) Pop() interface{} {
 			// TODO
 			// push还没添加完成。
 			// 方案1：直接返回nil。
-			return nil
+			return nil, false
 
 			// 方案2：等待push添加完成
 			// continue
@@ -206,9 +206,8 @@ func (q *LLQueue) Pop() interface{} {
 
 			// 释放head指向上次pop操作的slot.
 			headNode.free()
-			return val
+			return val, true
 		}
-
 	}
 }
 
@@ -294,7 +293,7 @@ func (q *LRQueue) getSlot(id uint32) *stateNode {
 }
 
 // EnQueue入队，如果队列满了，返回false。
-func (q *LRQueue) EnQueue(val interface{}) (ok bool) {
+func (q *LRQueue) EnQueue(val interface{}) bool {
 	q.onceInit()
 	var slot *stateNode
 	// 获取 slot

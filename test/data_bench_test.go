@@ -13,14 +13,14 @@ import (
 	"github.com/min1324/data/queue"
 )
 
-type mapOp string
+type maDeQueue string
 
 const (
-	opPush = mapOp("Push")
-	opPop  = mapOp("Pop")
+	opEnQueue = maDeQueue("EnQueue")
+	opDeQueue = maDeQueue("DeQueue")
 )
 
-var mapOps = [...]mapOp{opPush, opPop}
+var maDeQueues = [...]maDeQueue{opEnQueue, opDeQueue}
 
 /*
 1<< 20~28
@@ -34,18 +34,18 @@ var mapOps = [...]mapOp{opPush, opPop}
 134217728	27
 268435456	28
 */
-const queueMaxSize = 1 << 24 // queue max size
-const prevPushSize = 1 << 20 // queue previous push
+const queueMaxSize = 1 << 24    // queue max size
+const prevEnQueueSize = 1 << 20 // queue previous EnQueue
 
 func randCall(m SQInterface) {
-	op := mapOps[rand.Intn(len(mapOps))]
+	op := maDeQueues[rand.Intn(len(maDeQueues))]
 	switch op {
-	case opPush:
-		m.Push(1)
-	case opPop:
-		m.Pop()
+	case opEnQueue:
+		m.EnQueue(1)
+	case opDeQueue:
+		m.DeQueue()
 	default:
-		panic("invalid mapOp")
+		panic("invalid maDeQueue")
 	}
 }
 
@@ -99,62 +99,62 @@ func benchMap(b *testing.B, bench bench) {
 	}
 }
 
-func BenchmarkPush(b *testing.B) {
+func BenchmarkEnQueue(b *testing.B) {
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
 		},
 
 		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
 			for ; pb.Next(); i++ {
-				m.Push(i)
+				m.EnQueue(i)
 			}
 		},
 	})
 }
 
-func BenchmarkPop(b *testing.B) {
+func BenchmarkDeQueue(b *testing.B) {
 
 	benchMap(b, bench{
 		setup: func(b *testing.B, m SQInterface) {
-			for i := 0; i < prevPushSize; i++ {
-				m.Push(i)
+			for i := 0; i < prevEnQueueSize; i++ {
+				m.EnQueue(i)
 			}
 		},
 
 		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
 			for ; pb.Next(); i++ {
-				m.Pop()
+				m.DeQueue()
 			}
 		},
 	})
 }
 
-func BenchmarkMostlyPush(b *testing.B) {
+func BenchmarkMostlyEnQueue(b *testing.B) {
 
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
-			for i := 0; i < prevPushSize; i++ {
-				m.Push(i)
+			for i := 0; i < prevEnQueueSize; i++ {
+				m.EnQueue(i)
 			}
 		},
 
 		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
 			for ; pb.Next(); i++ {
 				j := i % 4
-				m.Push(i)
+				m.EnQueue(i)
 				if j == 0 {
-					m.Pop()
+					m.DeQueue()
 				}
 			}
 		},
 	})
 }
 
-func BenchmarkMostlyPop(b *testing.B) {
+func BenchmarkMostlyDeQueue(b *testing.B) {
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
-			for i := 0; i < prevPushSize; i++ {
-				m.Push(i)
+			for i := 0; i < prevEnQueueSize; i++ {
+				m.EnQueue(i)
 			}
 		},
 
@@ -162,59 +162,59 @@ func BenchmarkMostlyPop(b *testing.B) {
 			for ; pb.Next(); i++ {
 				j := i % 8
 				if j == 0 {
-					m.Push(i)
+					m.EnQueue(i)
 				}
-				m.Pop()
+				m.DeQueue()
 			}
 		},
 	})
 }
 
-func BenchmarkPushPopBalance(b *testing.B) {
+func BenchmarkEnQueueDeQueueBalance(b *testing.B) {
 
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
-			for i := 0; i < prevPushSize; i++ {
-				m.Push(i)
+			for i := 0; i < prevEnQueueSize; i++ {
+				m.EnQueue(i)
 			}
 		},
 
 		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
 			for ; pb.Next(); i++ {
-				m.Push(i)
-				m.Pop()
+				m.EnQueue(i)
+				m.DeQueue()
 			}
 		},
 	})
 }
 
-func BenchmarkPushPopCollision(b *testing.B) {
+func BenchmarkEnQueueDeQueueCollision(b *testing.B) {
 
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
-			for i := 0; i < prevPushSize; i++ {
-				m.Push(i)
+			for i := 0; i < prevEnQueueSize; i++ {
+				m.EnQueue(i)
 			}
 		},
 
 		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
 			for ; pb.Next(); i++ {
 				if i%2 == 0 {
-					m.Push(i)
+					m.EnQueue(i)
 				} else {
-					m.Pop()
+					m.DeQueue()
 				}
 			}
 		},
 	})
 }
 
-func BenchmarkPushPopInterlace(b *testing.B) {
+func BenchmarkEnQueueDeQueueInterlace(b *testing.B) {
 
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
-			for i := 0; i < prevPushSize; i++ {
-				m.Push(i)
+			for i := 0; i < prevEnQueueSize; i++ {
+				m.EnQueue(i)
 			}
 		},
 
@@ -223,16 +223,16 @@ func BenchmarkPushPopInterlace(b *testing.B) {
 			for ; pb.Next(); i++ {
 				j += (i & 1)
 				if j&1 == 0 {
-					m.Push(i)
+					m.EnQueue(i)
 				} else {
-					m.Pop()
+					m.DeQueue()
 				}
 			}
 		},
 	})
 }
 
-func BenchmarkConcurrentPushPop(b *testing.B) {
+func BenchmarkConcurrentEnQueueDeQueue(b *testing.B) {
 
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
@@ -256,17 +256,17 @@ func BenchmarkConcurrentPushPop(b *testing.B) {
 					case <-exit:
 						return
 					default:
-						m.Push(1)
+						m.EnQueue(1)
 					}
 				}
 			}()
 			for ; pb.Next(); i++ {
-				m.Pop()
+				m.DeQueue()
 			}
 		},
 	})
 }
-func BenchmarkConcurrentPopPush(b *testing.B) {
+func BenchmarkConcurrentDeQueueEnQueue(b *testing.B) {
 
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
@@ -290,18 +290,18 @@ func BenchmarkConcurrentPopPush(b *testing.B) {
 					case <-exit:
 						return
 					default:
-						m.Pop()
+						m.DeQueue()
 					}
 				}
 			}()
 			for ; pb.Next(); i++ {
-				m.Push(1)
+				m.EnQueue(1)
 			}
 		},
 	})
 }
 
-func BenchmarkConcurrentMostlyPush(b *testing.B) {
+func BenchmarkConcurrentMostlyEnQueue(b *testing.B) {
 
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
@@ -326,12 +326,12 @@ func BenchmarkConcurrentMostlyPush(b *testing.B) {
 						return
 					default:
 						time.Sleep(time.Millisecond * time.Duration(rand.Intn(100)))
-						m.Pop()
+						m.DeQueue()
 					}
 				}
 			}()
 			for ; pb.Next(); i++ {
-				m.Push(1)
+				m.EnQueue(1)
 			}
 		},
 	})
@@ -339,7 +339,7 @@ func BenchmarkConcurrentMostlyPush(b *testing.B) {
 
 func BenchmarkConcurrent(b *testing.B) {
 	const stackSize = 1 << 10
-	const push, pop = 128, 1
+	const EnQueue, DeQueue = 128, 1
 
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
@@ -366,7 +366,7 @@ func BenchmarkConcurrent(b *testing.B) {
 					case <-exit:
 						return
 					default:
-						m.Push(1)
+						m.EnQueue(1)
 					}
 				}
 			}()
@@ -378,7 +378,7 @@ func BenchmarkConcurrent(b *testing.B) {
 					case <-exit:
 						return
 					default:
-						m.Pop()
+						m.DeQueue()
 					}
 				}
 			}()
@@ -417,9 +417,9 @@ func BenchmarkConcurrentRand(b *testing.B) {
 						return
 					default:
 						if j^7 == 0 {
-							m.Push(j)
+							m.EnQueue(j)
 						} else {
-							m.Pop()
+							m.DeQueue()
 						}
 						atomic.AddUint64(&j, 1)
 					}
@@ -434,9 +434,9 @@ func BenchmarkConcurrentRand(b *testing.B) {
 						return
 					default:
 						if j^3 == 0 {
-							m.Push(j)
+							m.EnQueue(j)
 						} else {
-							m.Pop()
+							m.DeQueue()
 						}
 						atomic.AddUint64(&j, 1)
 					}

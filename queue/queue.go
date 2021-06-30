@@ -7,17 +7,10 @@ import (
 
 // Queue interface of queue
 type Queue interface {
-	// queue iniliazie func,init first use
 	Init()
-
-	// queue len
 	Size() int
-
-	// put a value into tail of queue
-	Push(interface{})
-
-	// get queue head value
-	Pop() interface{}
+	EnQueue(interface{}) bool
+	DeQueue() (val interface{}, ok bool)
 }
 
 const (

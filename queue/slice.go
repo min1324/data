@@ -70,7 +70,7 @@ func (s *Slice) Size() int {
 	return int(atomic.LoadUint32(&s.len))
 }
 
-func (s *Slice) Push(val interface{}) {
+func (s *Slice) EnQueue(val interface{}) bool {
 	s.onceInit()
 	if val == nil {
 		val = empty
@@ -83,14 +83,16 @@ func (s *Slice) Push(val interface{}) {
 		pushID := atomic.LoadUint32(&s.pushID)
 		slot := s.hash(pushID)
 		if casUint32(&s.pushID, pushID, pushID+1) {
-			slot.Push(val)
-			atomic.AddUint32(&s.len, 1)
-			break
+			ok := slot.EnQueue(val)
+			if ok {
+				atomic.AddUint32(&s.len, 1)
+			}
+			return ok
 		}
 	}
 }
 
-func (s *Slice) Pop() interface{} {
+func (s *Slice) DeQueue() (val interface{}, ok bool) {
 	s.onceInit()
 	for {
 		if atomic.LoadUint32(&s.state) != 0 {
@@ -99,19 +101,19 @@ func (s *Slice) Pop() interface{} {
 		}
 		popPID := atomic.LoadUint32(&s.popID)
 		if popPID == atomic.LoadUint32(&s.pushID) {
-			return nil
+			return nil, false
 		}
 		slot := s.hash(popPID)
 		if casUint32(&s.popID, popPID, popPID+1) {
-			val := slot.Pop()
-			if val == nil {
-				return nil
+			val, ok := slot.DeQueue()
+			if val == nil && ok {
+				return nil, false
 			}
 			if val == empty {
 				val = nil
 			}
 			atomic.AddUint32(&s.len, negativeOne)
-			return val
+			return val, true
 		}
 	}
 }

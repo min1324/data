@@ -19,8 +19,8 @@ const (
 type SQInterface interface {
 	Init()
 	Size() int
-	Push(interface{})
-	Pop() interface{}
+	EnQueue(interface{}) bool
+	DeQueue() (interface{}, bool)
 }
 
 // node stack,queue node
@@ -143,21 +143,24 @@ func (s *MutexSlice) Size() int {
 	return int(atomic.LoadUintptr(&s.count))
 }
 
-func (s *MutexSlice) Push(i interface{}) {
+func (s *MutexSlice) EnQueue(i interface{}) bool {
 	s.pushMu.Lock()
 	defer s.pushMu.Unlock()
 	s.onceInit()
 
 	id := atomic.LoadUintptr(&s.pushID)
-	s.hash(id).Push(i)
-	atomic.AddUintptr(&s.pushID, 1)
-	atomic.AddUintptr(&s.count, 1)
+	ok := s.hash(id).EnQueue(i)
+	if ok {
+		atomic.AddUintptr(&s.pushID, 1)
+		atomic.AddUintptr(&s.count, 1)
+	}
+	return ok
 }
 
-func (s *MutexSlice) Pop() interface{} {
+func (s *MutexSlice) DeQueue() (val interface{}, ok bool) {
 	id := atomic.LoadUintptr(&s.popID)
 	if id == atomic.LoadUintptr(&s.pushID) {
-		return nil
+		return nil, false
 	}
 
 	s.popMu.Lock()
@@ -166,12 +169,14 @@ func (s *MutexSlice) Pop() interface{} {
 
 	id = atomic.LoadUintptr(&s.popID)
 	if id == atomic.LoadUintptr(&s.pushID) {
-		return nil
+		return nil, false
 	}
-	e := s.hash(id).Pop()
-	atomic.AddUintptr(&s.popID, 1)
-	atomic.AddUintptr(&s.count, null)
-	return e
+	e, ok := s.hash(id).DeQueue()
+	if ok {
+		atomic.AddUintptr(&s.popID, 1)
+		atomic.AddUintptr(&s.count, null)
+	}
+	return e, ok
 }
 
 // UnsafeQueue queue without mutex
@@ -216,22 +221,24 @@ func (q *UnsafeQueue) Size() int {
 	return q.len
 }
 
-func (q *UnsafeQueue) Push(i interface{}) {
+func (q *UnsafeQueue) EnQueue(i interface{}) bool {
 	q.onceInit()
 	slot := newNode(i)
 	q.tail.next = slot
 	q.tail = slot
 	q.len += 1
+	return true
 }
 
-func (q *UnsafeQueue) Pop() interface{} {
+func (q *UnsafeQueue) DeQueue() (val interface{}, ok bool) {
 	q.onceInit()
 	if q.head.next == nil {
-		return nil
+		return nil, false
 	}
 	slot := q.head
 	q.head = q.head.next
 	slot.next = nil
 	q.len -= 1
-	return q.head.load()
+	val = q.head.load()
+	return val, true
 }
