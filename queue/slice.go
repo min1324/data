@@ -66,6 +66,19 @@ func (s *Slice) Init() {
 	atomic.StoreUint32(&s.state, 0)
 }
 
+func (q *Slice) Full() bool {
+	for i := range q.dirty {
+		if !q.dirty[i].Full() {
+			return false
+		}
+	}
+	return true
+}
+
+func (q *Slice) Empty() bool {
+	return q.len == 0
+}
+
 func (s *Slice) Size() int {
 	return int(atomic.LoadUint32(&s.len))
 }

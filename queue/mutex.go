@@ -34,6 +34,14 @@ func (q *SAQueue) Init() {
 	// free queue [s ->...-> e]
 }
 
+func (q *SAQueue) Full() bool {
+	return false
+}
+
+func (q *SAQueue) Empty() bool {
+	return len(q.data) == 0
+}
+
 func (q *SAQueue) Size() int {
 	return len(q.data)
 }
@@ -120,10 +128,6 @@ func (q *SRQueue) InitWith(cap ...int) {
 	q.init()
 }
 
-func (q *SRQueue) Size() int {
-	return int(q.len)
-}
-
 func (q *SRQueue) Full() bool {
 	return q.pushID^q.cap == q.popID
 }
@@ -132,12 +136,19 @@ func (q *SRQueue) Empty() bool {
 	return q.popID == q.pushID
 }
 
+func (q *SRQueue) Size() int {
+	return int(q.len)
+}
+
 // 根据pushID,popID获取进队，出队对应的slot
 func (q *SRQueue) getSlot(id uint32) *baseNode {
 	return &q.data[int(id&q.mod)]
 }
 
 func (q *SRQueue) EnQueue(i interface{}) bool {
+	if q.Full() {
+		return false
+	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.onceInit()
@@ -168,16 +179,6 @@ func (q *SRQueue) DeQueue() (val interface{}, ok bool) {
 	q.len -= 1
 	slot.free()
 	return val, true
-}
-
-func (q *SRQueue) Push(i interface{}) {
-	for !q.EnQueue(i) {
-	}
-}
-
-func (q *SRQueue) Pop() interface{} {
-	e, _ := q.DeQueue()
-	return e
 }
 
 // ---------------------------		dobul mutex ring queue		-----------------------------//
@@ -247,10 +248,6 @@ func (q *DRQueue) InitWith(cap ...int) {
 	q.init()
 }
 
-func (q *DRQueue) Size() int {
-	return int(q.len)
-}
-
 func (q *DRQueue) Full() bool {
 	return q.pushID^q.cap == q.popID
 }
@@ -259,12 +256,19 @@ func (q *DRQueue) Empty() bool {
 	return q.popID == q.pushID
 }
 
+func (q *DRQueue) Size() int {
+	return int(q.len)
+}
+
 // 根据pushID,popID获取进队，出队对应的slot
 func (q *DRQueue) getSlot(id uint32) *baseNode {
 	return &q.data[int(id&q.mod)]
 }
 
 func (q *DRQueue) EnQueue(i interface{}) bool {
+	if q.Full() {
+		return false
+	}
 	q.pushMu.Lock()
 	defer q.pushMu.Unlock()
 	q.onceInit()
@@ -304,15 +308,6 @@ func (q *DRQueue) DeQueue() (val interface{}, ok bool) {
 	atomic.AddUint32(&q.popID, 1)
 	slot.free()
 	return val, true
-}
-
-func (q *DRQueue) Push(i interface{}) {
-	q.EnQueue(i)
-}
-
-func (q *DRQueue) Pop() interface{} {
-	e, _ := q.DeQueue()
-	return e
 }
 
 // ---------------------------		single mutex list queue		-----------------------------//
@@ -358,6 +353,14 @@ func (q *SLQueue) Init() {
 		el.next = nil
 	}
 	return
+}
+
+func (q *SLQueue) Full() bool {
+	return false
+}
+
+func (q *SLQueue) Empty() bool {
+	return q.len == 0
 }
 
 func (q *SLQueue) Size() int {
@@ -440,6 +443,14 @@ func (q *DLQueue) Init() {
 		node.free()
 	}
 	return
+}
+
+func (q *DLQueue) Full() bool {
+	return false
+}
+
+func (q *DLQueue) Empty() bool {
+	return q.len == 0
 }
 
 func (q *DLQueue) Size() int {

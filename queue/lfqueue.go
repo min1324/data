@@ -4,7 +4,6 @@ package queue
 
 import (
 	"errors"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -211,6 +210,14 @@ func (q *LLQueue) DeQueue() (val interface{}, ok bool) {
 	}
 }
 
+func (q *LLQueue) Full() bool {
+	return false
+}
+
+func (q *LLQueue) Empty() bool {
+	return atomic.LoadUint32(&q.len) == 0
+}
+
 // range用于调试
 func (q *LLQueue) Range(f func(interface{})) {
 	head := q.head
@@ -280,6 +287,29 @@ func (q *LRQueue) InitWith(cap ...int) {
 		q.cap = uint32(cap[0])
 	}
 	q.init()
+}
+
+// queue's len
+func (q *LRQueue) Len() int {
+	return int(q.len)
+}
+
+// queue's cap
+func (q *LRQueue) Cap() int {
+	return int(q.cap)
+}
+
+// 队列是否满
+func (q *LRQueue) Full() bool {
+	return q.pushID^q.cap == q.popID
+	// return atomic.LoadUintptr(&q.len) == atomic.LoadUintptr(&q.cap)
+	// return (q.popID&q.mod + 1) == (q.pushID & q.mod)
+}
+
+// 队列是否空
+func (q *LRQueue) Empty() bool {
+	// return atomic.LoadUintptr(&q.len) == 0
+	return q.popID == q.pushID
 }
 
 // 数量
@@ -360,22 +390,12 @@ func (q *LRQueue) DeQueue() (val interface{}, ok bool) {
 	return val, true
 }
 
-// 入队，如果队列满了，一直等待直至入队成功。
-// 注意：如果没有出队操作，这里会发生死锁。
-func (q *LRQueue) Push(i interface{}) {
-	for !q.EnQueue(i) {
-		runtime.Gosched()
-		// TODO need grow size ?
-		// or add to temp queue
-	}
-}
-
 var (
 	errTimeOut = errors.New("超时")
 )
 
 // 带超时push入队。
-func (q *LRQueue) PushWait(i interface{}, timeout time.Duration) (bool, error) {
+func (q *LRQueue) PutWait(i interface{}, timeout time.Duration) (bool, error) {
 	t := time.NewTicker(timeout)
 	for {
 		select {
@@ -393,34 +413,4 @@ func (q *LRQueue) PushWait(i interface{}, timeout time.Duration) (bool, error) {
 func (q *LRQueue) grow() bool {
 	// TODO grow queue data
 	return false
-}
-
-// Pop attempt to pop one element,
-// if queue empty, it got nil.
-func (q *LRQueue) Pop() interface{} {
-	e, _ := q.DeQueue()
-	return e
-}
-
-// queue's len
-func (q *LRQueue) Len() int {
-	return int(q.len)
-}
-
-// queue's cap
-func (q *LRQueue) Cap() int {
-	return int(q.cap)
-}
-
-// 队列是否空
-func (q *LRQueue) Empty() bool {
-	// return atomic.LoadUintptr(&q.len) == 0
-	return q.popID == q.pushID
-}
-
-// 队列是否满
-func (q *LRQueue) Full() bool {
-	return q.pushID^q.cap == q.popID
-	// return atomic.LoadUintptr(&q.len) == atomic.LoadUintptr(&q.cap)
-	// return (q.popID&q.mod + 1) == (q.pushID & q.mod)
 }

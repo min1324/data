@@ -19,6 +19,8 @@ const (
 type SQInterface interface {
 	Init()
 	Size() int
+	Full() bool
+	Empty() bool
 	EnQueue(interface{}) bool
 	DeQueue() (interface{}, bool)
 }
@@ -49,10 +51,6 @@ type MutexStack struct {
 	mu    sync.Mutex
 }
 
-func (s *MutexStack) Size() int {
-	return s.count
-}
-
 func (s *MutexStack) Init() {
 	s.mu.Lock()
 	e := s.top
@@ -65,6 +63,18 @@ func (s *MutexStack) Init() {
 	}
 	s.mu.Unlock()
 	runtime.GC()
+}
+
+func (q *MutexStack) Full() bool {
+	return false
+}
+
+func (q *MutexStack) Empty() bool {
+	return q.count == 0
+}
+
+func (s *MutexStack) Size() int {
+	return s.count
 }
 
 func (s *MutexStack) Push(i interface{}) {
@@ -137,6 +147,14 @@ func (s *MutexSlice) Init() {
 	defer s.popMu.Unlock()
 
 	s.init()
+}
+
+func (q *MutexSlice) Full() bool {
+	return false
+}
+
+func (q *MutexSlice) Empty() bool {
+	return q.count == 0
 }
 
 func (s *MutexSlice) Size() int {
@@ -215,6 +233,14 @@ func (q *UnsafeQueue) Init() {
 		el.next = nil
 	}
 	return
+}
+
+func (q *UnsafeQueue) Full() bool {
+	return false
+}
+
+func (q *UnsafeQueue) Empty() bool {
+	return q.len == 0
 }
 
 func (q *UnsafeQueue) Size() int {

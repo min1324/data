@@ -9,6 +9,8 @@ import (
 type Queue interface {
 	Init()
 	Size() int
+	Full() bool
+	Empty() bool
 	EnQueue(interface{}) bool
 	DeQueue() (val interface{}, ok bool)
 }
