@@ -26,52 +26,28 @@ type LAQueue struct {
 	popID uintptr
 
 	// 环形队列，大小必须是2的倍数。
-	data []anode
-
-	// growing_Stat 扩容中，normal_Stat 正常状态
-	// TODO 暂停其他所有操作? 或者设置额外索引指向新数组.
-	// growStat uintptr
-
-	// // 当 data 满时，push 将添加到 cache 队列。
-	// // push 先检测 cache 是否有数据，
-	// cache Queue
-
-	// // cacheStat 有4种状态
-	// // empty_cacheStat 时，表示没有数据。
-	// // hald_cacheStat 时表示有数据，push 操作先将数据加入 cache 队列里
-	// // pop_cacheStat 表示正在 pop 操作，其他 pop 操作需要等待
-	// // push_cacheStat 表示 push 正在迁移数据
-	// cacheStat uintptr
-
+	data []laNode
 }
 
-type anode struct {
-	// popStat有两个状态，can和had。
-	// can 状态时，可以取出,即已经写入。pop操作通过cas改变为:had,获得读取权限。push操作时，表示队列满。
-	// had 状态时，已经取出。其他pop操作不能更改，并且只能由push操作更改为:can
-	popStat uintptr
-
-	// pushStat有两个状态，can和had。
-	// can 状态时，可以写入,即已经取出。push操作通过cas改变为:had,获得写入权限。pop操作时，表示队列空。
-	// had 状态时，已经写入。其他pop操作不能更改，并且只能由push操作更改为:can
-	pushStat uintptr
+type laNode struct {
+	// state有4个状态。
+	// 这两个状态在pop操作时都表示为队列空。
+	// poped_stat 状态时，已经取出，可以写入。push操作通过cas改变为pushing_stat,获得写入权限。
+	// pushing_stat 状态时，正在写入。即队列为空。其他push操作不能更改，只能由push操作更改为pushed_stat,
+	// 这两个状态在push操作时都表示为队列满。
+	// pushed_stat 状态时，已经写入,可以取出。pop操作通过cas改变为poping_stat,获得取出权限。
+	// poping_stat 状态时，正在取出。其他pop操作不能更改，并且只能由pop操作更改为poped_stat。
+	state uintptr
 
 	val unsafe.Pointer
 }
 
 const (
-	had_Get_popStat uintptr = iota // 只能由 Set 操作将 popStat 变成 can_get
-	can_Get_popStat                // 只能由 Get 操作将 popStat 变成 had_get， Set 操作遇到，说明队列满了.
+	poped_stat   uintptr = iota // 只能由push操作cas改变成pushing_stat, pop操作遇到，说明队列已空.
+	pushing_stat                // 只能由push操作变成pushed_stat, pop操作遇到，说明队列已空.
+	pushed_stat                 // 只能由pop操作cas变成poping_stat，push操作遇到，说明队列满了.
+	poping_stat                 // 只能由pop操作变成poped_stat，push操作遇到，说明队列满了.
 )
-
-const (
-	can_Set_PushStat uintptr = iota // 只能由 Set 操作将 pushStat 变成 had_set， Get 操作遇到，说明队列已空.
-	had_Set_PushStat                // 只能由 Get 操作将 pushStat 变成 can_set
-)
-
-// func newANode(i interface{}) *anode {
-// 	return &anode{p: unsafe.Pointer(&i)}
-// }
 
 const (
 	defaultQueueSize = 1 << 10
@@ -92,7 +68,7 @@ func (q *LAQueue) init() {
 	q.mod = minMod(q.cap)
 	q.cap = q.mod + 1
 	q.len = 0
-	data := make([]anode, q.cap)
+	data := make([]laNode, q.cap)
 	q.data = data
 }
 
@@ -115,7 +91,7 @@ func (q *LAQueue) Size() int {
 }
 
 // 根据pushID,popID获取进队，出队对应的slot
-func (q *LAQueue) getSlot(id uintptr) *anode {
+func (q *LAQueue) getSlot(id uintptr) *laNode {
 	return &q.data[int(id&q.mod)]
 }
 
@@ -125,79 +101,76 @@ func (q *LAQueue) getSlot(id uintptr) *anode {
 // push only done in can_set,
 func (q *LAQueue) Set(i interface{}) (ok bool) {
 	q.onceInit()
-	var slot *anode
+	var slot *laNode
 	// 获取 slot
 	for {
 		// 获取最新 pushID,
 		pushID := atomic.LoadUintptr(&q.pushID)
 		slot = q.getSlot(pushID)
+		stat := atomic.LoadUintptr(&slot.state)
 
-		// 检测 popStat, can_get 表示队列满了。
-		if atomic.LoadUintptr(&slot.popStat) == can_Get_popStat {
+		// 检测state,pushed_stat或者poping_stat表示队列满了。
+		if stat == pushed_stat || stat == poping_stat {
 			// TODO 是否需要写入缓冲区,或者扩容
 			// queue full,
 			return false
 		}
-
-		// 检测pushStat是否可以写入:can_Set_PushStat
-		// cas获得写入权限，将pushStat变为:had_Set_PushStat
-		if casUptr(&slot.pushStat, can_Set_PushStat, had_Set_PushStat) {
-			// pushStat是had_Set_PushStat,成功插入slot
-			// 先更新 pushID,让其他线程更快执行
+		// 获取slot写入权限,将state变为:had_Set_PushStat
+		if casUptr(&slot.state, poped_stat, pushing_stat) {
+			// 成功获得slot
+			// 先更新pushID,让其他push更快执行
 			atomic.AddUintptr(&q.pushID, 1)
 			break
 		}
 	}
-	// slot写入数据
+	// 向slot写入数据
 	slot.store(i)
 	atomic.AddUintptr(&q.len, 1)
 
-	// 更新popStat为can_Get_popStat, Get()可以取出了
-	atomic.StoreUintptr(&slot.popStat, can_Get_popStat)
-
+	// 更新state为pushed_stat.
+	atomic.StoreUintptr(&slot.state, pushed_stat)
 	return true
 }
 
-func (n *anode) store(i interface{}) {
+func (n *laNode) store(i interface{}) {
 	atomic.StorePointer(&n.val, unsafe.Pointer(&i))
 }
 
 // 从队列中获取
 func (q *LAQueue) Get() (e interface{}, ok bool) {
 	q.onceInit()
-	var slot *anode
+	var slot *laNode
 	// 获取 slot
 	for {
 		// 获取最新 popPID,
 		popPID := atomic.LoadUintptr(&q.popID)
 		slot = q.getSlot(popPID)
+		stat := atomic.LoadUintptr(&slot.state)
 
 		// 检测 pushStat 是否 can_set, 队列空了。
-		if atomic.LoadUintptr(&slot.pushStat) == can_Set_PushStat {
+		if stat == poped_stat || stat == pushing_stat {
 			// queue empty,
 			return nil, false
 		}
 
-		// 检测popStat是否可以取出:can_Get_popStat
-		// cas获得写入权限，将popStat变为:had_Get_popStat
-		if casUptr(&slot.popStat, can_Get_popStat, had_Get_popStat) {
-			// popStat是had_Get_popStat,成功取出slot
-			// 先更新 popPID,让其他线程更快执行
+		// 获取slot取出权限,将state变为poping_stat
+		if casUptr(&slot.state, pushed_stat, poping_stat) {
+			// 成功取出slot
+			// 先更新popPID,让其他pop更快执行
 			atomic.AddUintptr(&q.popID, 1)
 			break
 		}
 	}
+	// 读取value
 	e = slot.load()
-	// 读取数据
 	atomic.AddUintptr(&q.len, ^uintptr(0))
 
-	// 更新pushStat为can_Set_PushStat, Set()可以写入了
-	atomic.StoreUintptr(&slot.pushStat, can_Set_PushStat)
-
+	// 更新pushStat为poped_stat.
+	atomic.StoreUintptr(&slot.state, poped_stat)
 	return e, true
 }
 
-func (n *anode) load() interface{} {
+func (n *laNode) load() interface{} {
 	return *(*interface{})(n.val)
 }
 
@@ -205,9 +178,8 @@ func (n *anode) load() interface{} {
 // wait until it success.
 // use carefuly,if queue full, push still waitting.
 func (q *LAQueue) Push(i interface{}) {
-	for ok := q.Set(i); !ok; {
+	for !q.Set(i) {
 		runtime.Gosched()
-		ok = q.Set(i)
 		// TODO need grow size ?
 		// or add to temp queue
 	}
@@ -238,13 +210,14 @@ func (q *LAQueue) Cap() int {
 
 // 队列是否空
 func (q *LAQueue) Empty() bool {
-	return atomic.LoadUintptr(&q.len) == 0
-	//	return (q.popID & q.mod) == (q.pushID & q.mod)
+	// return atomic.LoadUintptr(&q.len) == 0
+	return q.popID == q.pushID
 }
 
 // 队列是否满
 func (q *LAQueue) Full() bool {
-	return atomic.LoadUintptr(&q.len) == atomic.LoadUintptr(&q.cap)
+	return q.pushID^q.cap == q.popID
+	// return atomic.LoadUintptr(&q.len) == atomic.LoadUintptr(&q.cap)
 	// return (q.popID&q.mod + 1) == (q.pushID & q.mod)
 }
 
