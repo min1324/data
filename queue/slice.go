@@ -48,7 +48,7 @@ func (s *Slice) init() {
 	for i := 0; i < len(s.dirty); i++ {
 		if s.New == nil {
 			// use queue
-			s.dirty[i] = &Queue{}
+			s.dirty[i] = &LFQueue{}
 		} else {
 			s.dirty[i] = s.New()
 		}
