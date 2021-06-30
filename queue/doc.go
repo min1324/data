@@ -3,10 +3,10 @@ package queue
 /*
 // 接口
 type Queue interface {
-	Init()            // queue iniliazie func,init first use
-	Size() int        // queue len
-	Push(interface{}) // put a value into tail of queue
-	Pop() interface{} // get queue head value
+	Init()
+	Size() int
+	EnQueue(interface{}) bool
+	DeQueue() (val interface{}, ok bool)
 }
 
 type XXQueue struct {
