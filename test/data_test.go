@@ -24,6 +24,7 @@ func testStack(t *testing.T, test test) {
 		&queue.DLQueue{},
 		&queue.DRQueue{},
 		&queue.LLQueue{},
+		&queue.LRQueue{},
 		&queue.SAQueue{},
 		&queue.SLQueue{},
 		&queue.SRQueue{},

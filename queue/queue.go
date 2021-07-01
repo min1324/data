@@ -13,11 +13,19 @@ type Queue interface {
 	DeQueue() (val interface{}, ok bool)
 }
 
+type DataQueue interface {
+	Queue
+	onceInit()
+	Full() bool
+	Empty() bool
+}
+
 const (
 	DefauleSize = 1 << 10
 	negativeOne = ^uint32(0) // -1
 )
 
+// 用一个空接口代替nil值。
 var empty = unsafe.Pointer(new(interface{}))
 
 // New return an empty lock-free unbound list Queue
@@ -29,37 +37,51 @@ func New() Queue {
 
 // 双锁链表队列
 func NewDLQueue() Queue {
-	return &DLQueue{}
+	var q LLQueue
+	q.onceInit()
+	return &q
 }
 
 // 双锁环形队列
 func NewDRQueue() Queue {
-	return &DRQueue{}
+	var q DRQueue
+	q.onceInit()
+	return &q
 }
 
 // lock-free 链表队列
 func NewLLQueue() Queue {
-	return &LLQueue{}
+	var q LLQueue
+	q.onceInit()
+	return &q
 }
 
 // 单锁数组队列
 func NewSAQueue() Queue {
-	return &SAQueue{}
+	var q SAQueue
+	q.onceInit()
+	return &q
 }
 
 // 单锁链表队列
 func NewSLQueue() Queue {
-	return &SLQueue{}
+	var q SLQueue
+	q.onceInit()
+	return &q
 }
 
 // 单锁环形队列
 func NewSRQueue() Queue {
-	return &SRQueue{}
+	var q SRQueue
+	q.onceInit()
+	return &q
 }
 
 // 一组队列
 func NewSlice() Queue {
-	return &Slice{}
+	var q Slice
+	q.onceInit()
+	return &q
 }
 
 func cas(p *unsafe.Pointer, old, new unsafe.Pointer) bool {

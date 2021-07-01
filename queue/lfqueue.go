@@ -14,7 +14,7 @@ import (
 type LLQueue struct {
 	// 声明队列后，如果没有调用Init(),队列不能使用
 	// 为解决这个问题，加入一次性操作。
-	// 能在队列声明后，调用push或者pop操作前，初始化队列。
+	// 能在队列声明后，调用EnQueue或者DeQueue操作前，初始化队列。
 	// 见 onceInit()
 	once sync.Once
 
@@ -34,7 +34,7 @@ type LLQueue struct {
 	// 如果不是，则需要让tail指向下一个来提升tail,直到tail指向最后一个。
 	// 通过cas将slot加入tail.
 	//
-	// stat只有pushed和poped状态。
+	// stat只有EnQueueed和DeQueueed状态。
 	head unsafe.Pointer
 	tail unsafe.Pointer
 }
@@ -52,7 +52,7 @@ func (q *LLQueue) onceInit() {
 }
 
 // 线程不安全初始化，只在声明队列后，
-// 使用push或者pop前调用一次。
+// 使用EnQueue或者DeQueue前调用一次。
 func (q *LLQueue) init() {
 	q.head = unsafe.Pointer(&stateNode{})
 	q.tail = q.head
@@ -73,8 +73,8 @@ func (q *LLQueue) Init() {
 
 		// 让head指向tail,置空队列，但是len并未置空，
 		//
-		// 因为置空队列，然后len=0两个操作期间，其他线程可能push。
-		// I为Init，P为Push，运行路线可能：I将head指向tail,P通过push成功加入数据，len增加1，I将len置0.与预期1不相符。
+		// 因为置空队列，然后len=0两个操作期间，其他线程可能EnQueue。
+		// I为Init，P为Push，运行路线可能：I将head指向tail,P通过EnQueue成功加入数据，len增加1，I将len置0.与预期1不相符。
 		// 所以len无法直接置0。
 		//
 		// 如果先置len=0,再cas置空队列。
@@ -87,7 +87,7 @@ func (q *LLQueue) Init() {
 		oldLen := atomic.LoadUint32(&q.len)
 		if cas(&q.head, head, tail) {
 			// cas成功，表明期间并无其他操作，队列已经空了，但是len还没置0
-			// 这里可能有并发push,增加len；即使有pop,也能保持newLen>=oldLen
+			// 这里可能有并发EnQueue,增加len；即使有DeQueue,也能保持newLen>=oldLen
 			for {
 				newLen := atomic.LoadUint32(&q.len)
 				detla := newLen - oldLen
@@ -144,8 +144,8 @@ func (q *LLQueue) EnQueue(val interface{}) bool {
 			cas(&q.tail, tail, slotPtr)
 			// 更新len
 			atomic.AddUint32(&q.len, 1)
-			// 完成添加，将slot设置为可用，让等待的pop可以取走
-			slot.change(pushed_stat)
+			// 完成添加，将slot设置为可用，让等待的DeQueue可以取走
+			slot.change(seted_stat)
 			break
 		}
 	}
@@ -166,7 +166,7 @@ func (q *LLQueue) DeQueue() (val interface{}, ok bool) {
 		headNode := (*stateNode)(head)
 		headNext := headNode.next
 
-		// Q->head 其他pop成功获得slot.指针已移动，重新取 head指针
+		// Q->head 其他DeQueue成功获得slot.指针已移动，重新取 head指针
 		if head != atomic.LoadPointer(&q.head) {
 			continue
 		}
@@ -186,27 +186,27 @@ func (q *LLQueue) DeQueue() (val interface{}, ok bool) {
 
 		// 先记录slot，然后尝试取出
 		slot := (*stateNode)(headNext)
-		if slot.status() != pushed_stat {
+		if slot.status() != seted_stat {
 			// TODO
-			// push还没添加完成。
+			// EnQueue还没添加完成。
 			// 方案1：直接返回nil。
 			return nil, false
 
-			// 方案2：等待push添加完成
+			// 方案2：等待EnQueue添加完成
 			// continue
 		}
 
 		// 记录值，再尝试获取slot.
 		// 如果先获取slot,再记录值。会出现的问题：
-		// pop1通过cas获取slot后暂停。pop2获取到slot.next,调用headNode.free()，将slot释放掉
+		// DeQueue1通过cas获取slot后暂停。DeQueue2获取到slot.next,调用headNode.free()，将slot释放掉
 		// 此时slot已经被清空，获取到nil值。与预期不符。
 		val := slot.load()
 		if cas(&q.head, head, headNext) {
-			// 成功取出slot,此时的slot可能被其他pop释放。
+			// 成功取出slot,此时的slot可能被其他DeQueue释放。
 			// len-1
 			atomic.AddUint32(&q.len, negativeOne)
 
-			// 释放head指向上次pop操作的slot.
+			// 释放head指向上次DeQueue操作的slot.
 			headNode.free()
 			return val, true
 		}
@@ -243,20 +243,20 @@ func (q *LLQueue) Range(f func(interface{})) {
 type LRQueue struct {
 	once sync.Once
 
-	len    uint32 // 队列当前数据长度
-	cap    uint32 // 队列容量，自动向上调整至2^n
-	mod    uint32 // cap-1,即2^n-1,用作取slot: data[ID&mod]
-	popID  uint32 // 指向取出数据的位置:popID&mod
-	pushID uint32 // 指向下次写入数据的位置:pushID&mod
+	len  uint32 // 队列当前数据长度
+	cap  uint32 // 队列容量，自动向上调整至2^n
+	mod  uint32 // cap-1,即2^n-1,用作取slot: data[ID&mod]
+	deID uint32 // 指向下次取出数据的位置:deID&mod
+	enID uint32 // 指向下次写入数据的位置:enID&mod
 
 	// 环形队列，大小必须是2的倍数。
 	// state有4个状态。
-	// 这两个状态在pop操作时都表示为队列空。
-	// poped_stat 状态时，已经取出，可以写入。push操作通过cas改变为pushing_stat,获得写入权限。
-	// pushing_stat 状态时，正在写入。即队列为空。其他push操作不能更改，只能由push操作更改为pushed_stat,
-	// 这两个状态在push操作时都表示为队列满。
-	// pushed_stat 状态时，已经写入,可以取出。pop操作通过cas改变为poping_stat,获得取出权限。
-	// poping_stat 状态时，正在取出。其他pop操作不能更改，并且只能由pop操作更改为poped_stat。
+	// 这两个状态在DeQueue操作时都表示为队列空。
+	// geted_stat 状态时，已经取出，可以写入。EnQueue操作通过cas改变为setting_stat,获得写入权限。
+	// setting_stat 状态时，正在写入。即队列为空。其他EnQueue操作不能更改，只能由EnQueue操作更改为seted_stat,
+	// 这两个状态在EnQueue操作时都表示为队列满。
+	// seted_stat 状态时，已经写入,可以取出。DeQueue操作通过cas改变为getting_stat,获得取出权限。
+	// getting_stat 状态时，正在取出。其他DeQueue操作不能更改，并且只能由DeQueue操作更改为geted_stat。
 	data []stateNode
 }
 
@@ -271,7 +271,7 @@ func (q *LRQueue) init() {
 	if q.cap < 1 {
 		q.cap = DefauleSize
 	}
-	q.popID = q.pushID
+	q.deID = q.enID
 	q.mod = modUint32(q.cap)
 	q.cap = q.mod + 1
 	q.len = 0
@@ -304,15 +304,15 @@ func (q *LRQueue) Cap() int {
 
 // 队列是否满
 func (q *LRQueue) Full() bool {
-	return q.pushID^q.cap == q.popID
+	return q.enID^q.cap == q.deID
 	// return atomic.LoadUintptr(&q.len) == atomic.LoadUintptr(&q.cap)
-	// return (q.popID&q.mod + 1) == (q.pushID & q.mod)
+	// return (q.deID&q.mod + 1) == (q.enID & q.mod)
 }
 
 // 队列是否空
 func (q *LRQueue) Empty() bool {
 	// return atomic.LoadUintptr(&q.len) == 0
-	return q.popID == q.pushID
+	return q.deID == q.enID
 }
 
 // 数量
@@ -320,7 +320,7 @@ func (q *LRQueue) Size() int {
 	return int(q.len)
 }
 
-// 根据pushID,popID获取进队，出队对应的slot
+// 根据enID,deID获取进队，出队对应的slot
 func (q *LRQueue) getSlot(id uint32) *stateNode {
 	return &q.data[int(id&q.mod)]
 }
@@ -334,22 +334,22 @@ func (q *LRQueue) EnQueue(val interface{}) bool {
 	var slot *stateNode
 	// 获取 slot
 	for {
-		// 获取最新 pushID,
-		pushID := atomic.LoadUint32(&q.pushID)
-		slot = q.getSlot(pushID)
+		// 获取最新 enID,
+		enID := atomic.LoadUint32(&q.enID)
+		slot = q.getSlot(enID)
 		stat := atomic.LoadUint32(&slot.state)
 
-		// 检测state,pushed_stat或者poping_stat表示队列满了。
-		if stat == pushed_stat || stat == poping_stat {
+		// 检测state,seted_stat或者getting_stat表示队列满了。
+		if stat == seted_stat || stat == getting_stat {
 			// TODO 是否需要写入缓冲区,或者扩容
 			// queue full,
 			return false
 		}
 		// 获取slot写入权限,将state变为:had_Set_PushStat
-		if casUint32(&slot.state, poped_stat, pushing_stat) {
+		if casUint32(&slot.state, geted_stat, setting_stat) {
 			// 成功获得slot
-			// 先更新pushID,让其他push更快执行
-			atomic.AddUint32(&q.pushID, 1)
+			// 先更新enID,让其他EnQueue更快执行
+			atomic.AddUint32(&q.enID, 1)
 			break
 		}
 	}
@@ -357,8 +357,8 @@ func (q *LRQueue) EnQueue(val interface{}) bool {
 	slot.store(val)
 	atomic.AddUint32(&q.len, 1)
 
-	// 更新state为pushed_stat.
-	atomic.StoreUint32(&slot.state, pushed_stat)
+	// 更新state为seted_stat.
+	atomic.StoreUint32(&slot.state, seted_stat)
 	return true
 }
 
@@ -371,31 +371,32 @@ func (q *LRQueue) DeQueue() (val interface{}, ok bool) {
 	var slot *stateNode
 	// 获取 slot
 	for {
-		// 获取最新 popPID,
-		popPID := atomic.LoadUint32(&q.popID)
-		slot = q.getSlot(popPID)
+		// 获取最新 DeQueuePID,
+		deID := atomic.LoadUint32(&q.deID)
+		slot = q.getSlot(deID)
 		stat := atomic.LoadUint32(&slot.state)
 
-		// 检测 pushStat 是否 can_set, 队列空了。
-		if stat == poped_stat || stat == pushing_stat {
+		// 检测 EnQueueStat 是否 can_set, 队列空了。
+		if stat == geted_stat || stat == setting_stat {
 			// queue empty,
 			return nil, false
 		}
-
-		// 获取slot取出权限,将state变为poping_stat
-		if casUint32(&slot.state, pushed_stat, poping_stat) {
+		// 先读取值，再尝试删除旧slot,z 如果先删除旧slot,会被其他DeQueue清空slot
+		val = slot.load()
+		// 获取slot取出权限,将state变为getting_stat
+		if casUint32(&slot.state, seted_stat, getting_stat) {
 			// 成功取出slot
-			// 先更新popPID,让其他pop更快执行
-			atomic.AddUint32(&q.popID, 1)
+			atomic.AddUint32(&q.deID, 1)
 			break
 		}
 	}
-	// 读取value
-	val = slot.load()
+	// 释放slot
 	atomic.AddUint32(&q.len, negativeOne)
+	slot.free()
 
-	// 更新pushStat为poped_stat.
-	atomic.StoreUint32(&slot.state, poped_stat)
+	// 更新EnQueueStat为geted_stat.因为	slot.free()已经清空了状态，这步可以不用写。
+	atomic.StoreUint32(&slot.state, geted_stat)
+
 	return val, true
 }
 
@@ -403,7 +404,7 @@ var (
 	errTimeOut = errors.New("超时")
 )
 
-// 带超时push入队。
+// 带超时EnQueue入队。
 func (q *LRQueue) PutWait(i interface{}, timeout time.Duration) (bool, error) {
 	t := time.NewTicker(timeout)
 	for {

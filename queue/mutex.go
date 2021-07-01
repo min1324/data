@@ -77,10 +77,10 @@ func (q *SAQueue) DeQueue() (val interface{}, ok bool) {
 
 // 单锁环形队列,有固定数组
 // 游标采取先操作，后移动方案。
-// push,pop操作时，先操作slot增改value
-// 操作完成后移动popID,pushID.
-// 队列空条件为popID==pushID
-// 满条件pushID^cap==popID
+// EnQUeue,DeQueue操作时，先操作slot增改value
+// 操作完成后移动deID,enID.
+// 队列空条件为deID==enID
+// 满条件enID^cap==deID
 //
 // SRQueue is an unbounded queue which uses a slice as underlying.
 type SRQueue struct {
@@ -91,9 +91,10 @@ type SRQueue struct {
 	cap uint32
 	mod uint32
 
-	pushID uint32
-	popID  uint32
-	data   []baseNode
+	deID uint32
+	enID uint32
+
+	data []baseNode
 }
 
 func (q *SRQueue) onceInit() {
@@ -106,7 +107,7 @@ func (q *SRQueue) init() {
 	if q.cap < 1 {
 		q.cap = DefauleSize
 	}
-	q.popID = q.pushID
+	q.deID = q.enID
 	q.len = 0
 	q.mod = modUint32(q.cap)
 	q.cap = q.mod + 1
@@ -132,18 +133,18 @@ func (q *SRQueue) InitWith(cap ...int) {
 }
 
 func (q *SRQueue) Full() bool {
-	return q.pushID^q.cap == q.popID
+	return q.enID^q.cap == q.deID
 }
 
 func (q *SRQueue) Empty() bool {
-	return q.popID == q.pushID
+	return q.deID == q.enID
 }
 
 func (q *SRQueue) Size() int {
 	return int(q.len)
 }
 
-// 根据pushID,popID获取进队，出队对应的slot
+// 根据enID,deID获取进队，出队对应的slot
 func (q *SRQueue) getSlot(id uint32) *baseNode {
 	return &q.data[int(id&q.mod)]
 }
@@ -159,8 +160,8 @@ func (q *SRQueue) EnQueue(i interface{}) bool {
 	if q.Full() {
 		return false
 	}
-	q.getSlot(q.pushID).store(i)
-	q.pushID += 1
+	q.getSlot(q.enID).store(i)
+	q.enID += 1
 	q.len += 1
 	return true
 }
@@ -176,9 +177,9 @@ func (q *SRQueue) DeQueue() (val interface{}, ok bool) {
 	if q.Empty() {
 		return nil, false
 	}
-	slot := q.getSlot(q.popID)
+	slot := q.getSlot(q.deID)
 	val = slot.load()
-	q.popID += 1
+	q.deID += 1
 	q.len -= 1
 	slot.free()
 	return val, true
@@ -188,28 +189,28 @@ func (q *SRQueue) DeQueue() (val interface{}, ok bool) {
 
 // 双锁环形队列,有固定数组
 // 游标采取先操作，后移动方案。
-// push,pop操作时，先操作slot增改value
-// 操作完成后移动popID,pushID.
-// 队列空条件为popID==pushID
-// 满条件pushID^cap==popID
+// EnQUeue,DeQueue操作时，先操作slot增改value
+// 操作完成后移动deID,enID.
+// 队列空条件为deID==enID
+// 满条件enID^cap==deID
 //
 // DRQueue is an unbounded queue which uses a slice as underlying.
 type DRQueue struct {
-	once   sync.Once
-	popMu  sync.Mutex
-	pushMu sync.Mutex
+	once sync.Once
+	deMu sync.Mutex
+	enMu sync.Mutex
 
 	len uint32
 	cap uint32
 	mod uint32
 
-	pushID uint32
-	popID  uint32
+	enID uint32
+	deID uint32
 
-	// val为空，表示可以push,如果时pop操作，表示队列空。
-	// val不为空，表所可以pop,如果是push操作，表示队列满了。
-	// 并且只能由push将val从nil变成非nil,
-	// 只能由pop将val从非niu变成nil.
+	// val为空，表示可以EnQUeue,如果是DeQueue操作，表示队列空。
+	// val不为空，表所可以DeQueue,如果是EnQUeue操作，表示队列满了。
+	// 并且只能由EnQUeue将val从nil变成非nil,
+	// 只能由DeQueue将val从非niu变成nil.
 	data []baseNode
 }
 
@@ -223,7 +224,7 @@ func (q *DRQueue) init() {
 	if q.cap < 1 {
 		q.cap = DefauleSize
 	}
-	q.popID = q.pushID
+	q.deID = q.enID
 	q.len = 0
 	q.mod = modUint32(q.cap)
 	q.cap = q.mod + 1
@@ -231,11 +232,11 @@ func (q *DRQueue) init() {
 }
 
 func (q *DRQueue) Init() {
-	q.pushMu.Lock()
-	defer q.pushMu.Unlock()
+	q.enMu.Lock()
+	defer q.enMu.Unlock()
 
-	q.popMu.Lock()
-	defer q.popMu.Unlock()
+	q.deMu.Lock()
+	defer q.deMu.Unlock()
 	q.onceInit()
 
 	q.init()
@@ -252,18 +253,18 @@ func (q *DRQueue) InitWith(cap ...int) {
 }
 
 func (q *DRQueue) Full() bool {
-	return q.pushID^q.cap == q.popID
+	return q.enID^q.cap == q.deID
 }
 
 func (q *DRQueue) Empty() bool {
-	return q.popID == q.pushID
+	return q.deID == q.enID
 }
 
 func (q *DRQueue) Size() int {
 	return int(q.len)
 }
 
-// 根据pushID,popID获取进队，出队对应的slot
+// 根据enID,deID获取进队，出队对应的slot
 func (q *DRQueue) getSlot(id uint32) *baseNode {
 	return &q.data[int(id&q.mod)]
 }
@@ -272,17 +273,17 @@ func (q *DRQueue) EnQueue(i interface{}) bool {
 	if q.Full() {
 		return false
 	}
-	q.pushMu.Lock()
-	defer q.pushMu.Unlock()
+	q.enMu.Lock()
+	defer q.enMu.Unlock()
 	q.onceInit()
 
-	slot := q.getSlot(q.pushID)
+	slot := q.getSlot(q.enID)
 	if slot.load() != nil {
 		// 队列满了
 		return false
 	}
 	atomic.AddUint32(&q.len, 1)
-	atomic.AddUint32(&q.pushID, 1)
+	atomic.AddUint32(&q.enID, 1)
 	if i == nil {
 		i = empty
 	}
@@ -294,11 +295,11 @@ func (q *DRQueue) DeQueue() (val interface{}, ok bool) {
 	if q.Empty() {
 		return nil, false
 	}
-	q.popMu.Lock()
-	defer q.popMu.Unlock()
+	q.deMu.Lock()
+	defer q.deMu.Unlock()
 	q.onceInit()
 
-	slot := q.getSlot(q.popID)
+	slot := q.getSlot(q.deID)
 	if slot.load() == nil {
 		// 队列空了
 		return nil, false
@@ -308,7 +309,7 @@ func (q *DRQueue) DeQueue() (val interface{}, ok bool) {
 		val = nil
 	}
 	atomic.AddUint32(&q.len, ^uint32(0))
-	atomic.AddUint32(&q.popID, 1)
+	atomic.AddUint32(&q.deID, 1)
 	slot.free()
 	return val, true
 }
@@ -351,9 +352,9 @@ func (q *SLQueue) Init() {
 	q.len = 0
 	// free queue [s ->...-> e]
 	for head != tail && head != nil {
-		el := head
-		head = el.next
-		el.next = nil
+		n := head
+		head = n.next
+		n.next = nil
 	}
 	return
 }
@@ -400,17 +401,17 @@ func (q *SLQueue) DeQueue() (val interface{}, ok bool) {
 }
 
 // 双锁链表队列
-// push只需保证修改tail是最后一步。
+// EnQUeue只需保证修改tail是最后一步。
 //
 // DLQueue is a concurrent unbounded queue which uses two-Lock concurrent queue qlgorithm.
 type DLQueue struct {
-	once   sync.Once
-	popMu  sync.Mutex // pop操作锁
-	pushMu sync.Mutex // push操作锁
+	once sync.Once
+	deMu sync.Mutex // DeQueue操作锁
+	enMu sync.Mutex // EnQUeue操作锁
 
 	len  uint32
-	head unsafe.Pointer // 只能由pop操作更改，其他操作只读
-	tail unsafe.Pointer // 只能由push操作更改，其他操作只读
+	head unsafe.Pointer // 只能由DeQueue操作更改，其他操作只读
+	tail unsafe.Pointer // 只能由EnQUeue操作更改，其他操作只读
 }
 
 func (q *DLQueue) onceInit() {
@@ -426,24 +427,24 @@ func (q *DLQueue) init() {
 }
 
 func (q *DLQueue) Init() {
-	q.pushMu.Lock()
-	defer q.pushMu.Unlock()
-	q.popMu.Lock()
-	defer q.popMu.Unlock()
+	q.enMu.Lock()
+	defer q.enMu.Unlock()
+	q.deMu.Lock()
+	defer q.deMu.Unlock()
 
 	q.onceInit()
-	head := q.head // start listNode
-	tail := q.tail // end listNode
+	head := q.head
+	tail := q.tail
 	if head == tail {
 		return
 	}
 	q.head = q.tail
 	q.len = 0
-	// free queue [s ->...-> e]
+	// free queue [head ->...-> tail]
 	for head != tail && head != nil {
-		node := (*ptrNode)(head)
-		head = node.next
-		node.free()
+		n := (*ptrNode)(head)
+		head = n.next
+		n.free()
 	}
 	return
 }
@@ -461,12 +462,11 @@ func (q *DLQueue) Size() int {
 }
 
 func (q *DLQueue) EnQueue(i interface{}) bool {
-	q.pushMu.Lock()
-	defer q.pushMu.Unlock()
+	q.enMu.Lock()
+	defer q.enMu.Unlock()
 	q.onceInit()
 
-	// 无满条件限制，直接执行。
-	// tail只能由push更改，无竞争,pop只读
+	// tail只能由EnQUeue更改，无竞争,DeQueue只读
 	// tail := atomic.LoadPointer(&q.tail)
 	tail := q.tail
 	tailNode := (*ptrNode)(tail)
@@ -476,8 +476,8 @@ func (q *DLQueue) EnQueue(i interface{}) bool {
 	atomic.AddUint32(&q.len, 1)
 
 	// 更新tail
-	q.tail = unsafe.Pointer(slot)
-	// atomic.StorePointer(&q.tail, unsafe.Pointer(slot))
+	// q.tail = unsafe.Pointer(slot)
+	atomic.StorePointer(&q.tail, unsafe.Pointer(slot))
 	return true
 }
 
@@ -485,16 +485,16 @@ func (q *DLQueue) DeQueue() (val interface{}, ok bool) {
 	if q.Empty() {
 		return
 	}
-	q.popMu.Lock()
-	defer q.popMu.Unlock()
+	q.deMu.Lock()
+	defer q.deMu.Unlock()
 	q.onceInit()
 
-	// head落后tail,即便tail更改了，出队操作无影响
-	// 只需保证队列非空即可出队.
 	if q.head == q.tail {
 		// 队列空，返回
 		return nil, false
 	}
+	// tail不需要最新，即便tail更改了，DeQueue操作无影响。只需保证队列非空即可出队.
+
 	headNode := (*ptrNode)(q.head)
 	slot := (*ptrNode)(headNode.next)
 	q.head = headNode.next

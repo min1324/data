@@ -9,10 +9,10 @@ import (
 )
 
 const (
-	poped_stat   uint32 = iota // poped_stat 状态时，已经取出，可以写入。这个状态必须0
-	pushing_stat               // 只能由push操作变成pushed_stat, pop操作遇到，说明队列已空.
-	pushed_stat                // pushed_stat 状态时，已经写入,可以取出。
-	poping_stat                // 只能由pop操作变成poped_stat，push操作遇到，说明队列满了.
+	geted_stat   uint32 = iota // geted_stat 状态时，已经取出，可以写入。这个状态必须0
+	setting_stat               // 只能由EnQUeue操作变成seted_stat, DeQueue操作遇到，说明队列已空.
+	seted_stat                 // seted_stat 状态时，已经写入,可以取出。
+	getting_stat               // 只能由DeQueue操作变成geted_stat，EnQUeue操作遇到，说明队列满了.
 )
 
 // node接口
@@ -94,13 +94,13 @@ type stateNode struct {
 	baseNode
 
 	// state标志node是否可用
-	// poped_stat 状态时，已经取出，可以写入。
-	// push操作通过cas改变为pushing_stat,获得写入权限。
-	// 如无需权限，直接变为pushed.
+	// geted_stat 状态时，已经取出，可以写入。
+	// EnQUeue操作通过cas改变为EnQUeueing_stat,获得写入权限。
+	// 如无需权限，直接变为EnQUeueed.
 	//
-	// pushed_stat 状态时，已经写入,可以取出。
-	// pop操作通过cas改变为poping_stat,获得取出权限。
-	// 如无需权限，直接变为poped.
+	// seted_stat 状态时，已经写入,可以取出。
+	// DeQueue操作通过cas改变为DeQueueing_stat,获得取出权限。
+	// 如无需权限，直接变为DeQueueed.
 	state uint32
 	next  unsafe.Pointer
 }
@@ -112,9 +112,10 @@ func newStateNode(i interface{}) *stateNode {
 	// return &node{p: unsafe.Pointer(&i)}
 }
 
-// 释放node
+// 释放node,状态变为:geted_stat
 func (n *stateNode) free() {
 	n.baseNode.free()
+	n.state = geted_stat
 	n.next = nil
 }
 

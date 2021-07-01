@@ -19,20 +19,20 @@ const (
 type Slice struct {
 	once sync.Once
 
-	len    uint32
-	cap    uint32
-	mod    uint32
-	popID  uint32 // current pop id
-	pushID uint32 // current push id
+	len  uint32
+	cap  uint32
+	mod  uint32
+	deID uint32
+	enID uint32
 
-	state uint32 // 不为0时，初始化,无法执行push,pop.只能由Init更改
+	state uint32 // 不为0时，初始化,无法执行EnQueue,DeQueue.只能由Init更改
 
-	dirty [mod + 1]Queue
-	New   func() Queue
+	data [mod + 1]DataQueue
+	New  func() DataQueue
 }
 
-func (s *Slice) hash(id uint32) Queue {
-	return s.dirty[id&mod]
+func (s *Slice) getSlot(id uint32) DataQueue {
+	return s.data[id&mod]
 }
 
 func (s *Slice) onceInit() {
@@ -42,18 +42,19 @@ func (s *Slice) onceInit() {
 }
 
 func (s *Slice) init() {
-	for i := 0; i < len(s.dirty); i++ {
+	for i := 0; i < len(s.data); i++ {
 		if s.New == nil {
-			// use queue
-			s.dirty[i] = &LLQueue{}
+			// use default lock-free queue
+			s.data[i] = &LLQueue{}
 		} else {
-			s.dirty[i] = s.New()
+			s.data[i] = s.New()
 		}
+		s.data[i].onceInit()
 	}
 	if s.cap < 1 {
 		s.cap = DefauleSize
 	}
-	s.popID = s.pushID
+	s.deID = s.enID
 	s.mod = modUint32(s.cap)
 	s.cap = s.mod + 1
 	s.len = 0
@@ -61,23 +62,27 @@ func (s *Slice) init() {
 
 // Init prevent push new element into queue
 func (s *Slice) Init() {
-	atomic.StoreUint32(&s.state, 1)
-	s.init()
-	atomic.StoreUint32(&s.state, 0)
+	for {
+		if atomic.CompareAndSwapUint32(&s.state, 0, 1) {
+			s.init()
+			atomic.StoreUint32(&s.state, 0)
+			break
+		}
+	}
 }
 
-// func (q *Slice) Full() bool {
-// 	for i := range q.dirty {
-// 		if !q.dirty[i].Full() {
-// 			return false
-// 		}
-// 	}
-// 	return true
-// }
+func (q *Slice) Full() bool {
+	for i := range q.data {
+		if !q.data[i].Full() {
+			return false
+		}
+	}
+	return true
+}
 
-// func (q *Slice) Empty() bool {
-// 	return q.len == 0
-// }
+func (q *Slice) Empty() bool {
+	return q.len == 0
+}
 
 func (s *Slice) Size() int {
 	return int(atomic.LoadUint32(&s.len))
@@ -93,9 +98,9 @@ func (s *Slice) EnQueue(val interface{}) bool {
 			// Init 执行中，无法操作
 			continue
 		}
-		pushID := atomic.LoadUint32(&s.pushID)
-		slot := s.hash(pushID)
-		if casUint32(&s.pushID, pushID, pushID+1) {
+		enID := atomic.LoadUint32(&s.enID)
+		slot := s.getSlot(enID)
+		if casUint32(&s.enID, enID, enID+1) {
 			ok := slot.EnQueue(val)
 			if ok {
 				atomic.AddUint32(&s.len, 1)
@@ -112,14 +117,14 @@ func (s *Slice) DeQueue() (val interface{}, ok bool) {
 			// Init 执行中，无法操作
 			continue
 		}
-		popPID := atomic.LoadUint32(&s.popID)
-		if popPID == atomic.LoadUint32(&s.pushID) {
+		deID := atomic.LoadUint32(&s.deID)
+		if deID == atomic.LoadUint32(&s.enID) {
 			return nil, false
 		}
-		slot := s.hash(popPID)
-		if casUint32(&s.popID, popPID, popPID+1) {
+		slot := s.getSlot(deID)
+		if casUint32(&s.deID, deID, deID+1) {
 			val, ok := slot.DeQueue()
-			if val == nil && ok {
+			if val == nil || !ok {
 				return nil, false
 			}
 			if val == empty {
