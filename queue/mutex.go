@@ -364,7 +364,7 @@ func (q *SLQueue) Full() bool {
 }
 
 func (q *SLQueue) Empty() bool {
-	return q.len == 0
+	return q.head == q.tail
 }
 
 func (q *SLQueue) Size() int {

@@ -39,7 +39,6 @@ type LLQueue struct {
 	tail unsafe.Pointer
 }
 
-// Size queue element's number
 func (q *LLQueue) Size() int {
 	return int(atomic.LoadUint32(&q.len))
 }
@@ -59,7 +58,6 @@ func (q *LLQueue) init() {
 	q.len = 0
 }
 
-// Init initialize queue
 func (q *LLQueue) Init() {
 	q.onceInit()
 	for {
@@ -103,17 +101,16 @@ func (q *LLQueue) Init() {
 			}
 			return
 		}
-
-		// 方案2,释放旧node,len-1
-		if cas(&q.head, head, tail) {
-			for head != tail && head != nil {
-				freeNode := (*stateNode)(head)
-				head = freeNode.next
-				freeNode.free()
-				atomic.AddUint32(&q.len, negativeOne)
-			}
-			return
-		}
+		// // 方案2,释放旧node,len-1
+		// if cas(&q.head, head, tail) {
+		// 	for head != tail && head != nil {
+		// 		freeNode := (*stateNode)(head)
+		// 		head = freeNode.next
+		// 		freeNode.free()
+		// 		atomic.AddUint32(&q.len, negativeOne)
+		// 	}
+		// 	return
+		// }
 	}
 }
 
@@ -152,8 +149,6 @@ func (q *LLQueue) EnQueue(val interface{}) bool {
 	return true
 }
 
-// Pop removes and returns the value at the head of the queue.
-// It returns nil if the queue is empty.
 func (q *LLQueue) DeQueue() (val interface{}, ok bool) {
 	if q.Empty() {
 		return
@@ -218,17 +213,17 @@ func (q *LLQueue) Full() bool {
 }
 
 func (q *LLQueue) Empty() bool {
-	return atomic.LoadUint32(&q.len) == 0
+	return q.head == q.tail
 }
 
 // range用于调试
 func (q *LLQueue) Range(f func(interface{})) {
-	head := q.head
-	tail := q.tail
-	if head == tail {
+	if q.Empty() {
 		return
 	}
 
+	head := q.head
+	tail := q.tail
 	for head != tail && head != nil {
 		headNode := (*stateNode)(head)
 		n := (*stateNode)(headNode.next)
@@ -325,7 +320,6 @@ func (q *LRQueue) getSlot(id uint32) *stateNode {
 	return &q.data[int(id&q.mod)]
 }
 
-// EnQueue入队，如果队列满了，返回false。
 func (q *LRQueue) EnQueue(val interface{}) bool {
 	if q.Full() {
 		return false
@@ -362,7 +356,6 @@ func (q *LRQueue) EnQueue(val interface{}) bool {
 	return true
 }
 
-// DeQueue出队，如果队列空了，返回false。
 func (q *LRQueue) DeQueue() (val interface{}, ok bool) {
 	if q.Empty() {
 		return
@@ -407,6 +400,7 @@ var (
 // 带超时EnQueue入队。
 func (q *LRQueue) PutWait(i interface{}, timeout time.Duration) (bool, error) {
 	t := time.NewTicker(timeout)
+	defer t.Stop()
 	for {
 		select {
 		case <-t.C:
