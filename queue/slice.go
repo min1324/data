@@ -62,6 +62,7 @@ func (s *Slice) init() {
 
 // Init prevent push new element into queue
 func (s *Slice) Init() {
+	s.onceInit()
 	for {
 		if atomic.CompareAndSwapUint32(&s.state, 0, 1) {
 			s.init()
@@ -72,6 +73,7 @@ func (s *Slice) Init() {
 }
 
 func (q *Slice) Full() bool {
+	q.onceInit()
 	for i := range q.data {
 		if !q.data[i].Full() {
 			return false

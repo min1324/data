@@ -25,8 +25,10 @@ const (
 	negativeOne = ^uint32(0) // -1
 )
 
-// 用一个空接口代替nil值。
-var empty = unsafe.Pointer(new(interface{}))
+type queueNil *struct{}
+
+// 用一个包装nil值。
+var empty = queueNil(nil)
 
 // New return an empty lock-free unbound list Queue
 func New() Queue {
@@ -78,7 +80,7 @@ func NewSRQueue() Queue {
 }
 
 // 一组队列
-func NewSlice() Queue {
+func NewSlice() DataQueue {
 	var q Slice
 	q.onceInit()
 	return &q
