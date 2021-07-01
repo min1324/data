@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/min1324/data/queue"
@@ -102,11 +103,38 @@ func TestInit(t *testing.T) {
 			// size 测试
 			s.Init()
 			var n = 10
+			var esum, dsum int
 			for i := 0; i < n; i++ {
-				s.EnQueue(i)
+				if s.EnQueue(i) {
+					esum++
+				}
 			}
-			if s.Size() != n {
-				t.Fatalf("Size want:%d, real:%v", n, s.Size())
+			if s.Size() != esum {
+				t.Fatalf("Size want:%d, real:%v", esum, s.Size())
+			}
+			tk := time.NewTicker(time.Second * 5)
+			defer tk.Stop()
+			exit := false
+			for !exit {
+				select {
+				case <-tk.C:
+					t.Fatalf("size DeQueue timeout,")
+					exit = true
+
+					break
+				default:
+					_, ok := s.DeQueue()
+					if ok {
+						dsum++
+						tk.Reset(time.Second)
+					}
+					if s.Size() == 0 {
+						exit = true
+					}
+				}
+			}
+			if dsum != esum {
+				t.Fatalf("Size enqueue:%d, dequeue:%d,size:%d", esum, dsum, s.Size())
 			}
 
 			// 储存顺序测试,数组队列可能满
@@ -144,16 +172,18 @@ func TestInit(t *testing.T) {
 
 func TestEnQueue(t *testing.T) {
 	const maxSize = 1 << 10
-
+	var sum int64
 	testStack(t, test{
 		setup: func(t *testing.T, s SQInterface) {
 		},
 		perG: func(t *testing.T, s SQInterface) {
 			for i := 0; i < maxSize; i++ {
-				s.EnQueue(i)
+				if s.EnQueue(i) {
+					atomic.AddInt64(&sum, 1)
+				}
 			}
 
-			if s.Size() != maxSize {
+			if s.Size() != int(sum) {
 				t.Fatalf("TestConcurrentEnQueue err,EnQueue:%d,real:%d", maxSize, s.Size())
 			}
 		},
@@ -162,24 +192,27 @@ func TestEnQueue(t *testing.T) {
 
 func TestDeQueue(t *testing.T) {
 	const maxSize = 1 << 10
+	var sum int64
 	testStack(t, test{
 		setup: func(t *testing.T, s SQInterface) {
 		},
 		perG: func(t *testing.T, s SQInterface) {
 			for i := 0; i < maxSize; i++ {
-				s.EnQueue(i)
-			}
-
-			sum := 0
-			for i := 0; i < maxSize; i++ {
-				_, ok := s.DeQueue()
-				if ok {
-					sum += 1
+				if s.EnQueue(i) {
+					atomic.AddInt64(&sum, 1)
 				}
 			}
 
-			if s.Size()+sum != maxSize {
-				t.Fatalf("TestDeQueue err,EnQueue:%d,DeQueue:%d,size:%d", maxSize, sum, s.Size())
+			var dsum int64
+			for i := 0; i < maxSize; i++ {
+				_, ok := s.DeQueue()
+				if ok {
+					atomic.AddInt64(&dsum, 1)
+				}
+			}
+
+			if int64(s.Size())+dsum != sum {
+				t.Fatalf("TestDeQueue err,EnQueue:%d,DeQueue:%d,size:%d", sum, dsum, s.Size())
 			}
 		},
 	})
@@ -197,18 +230,21 @@ func TestConcurrentEnQueue(t *testing.T) {
 		},
 		perG: func(t *testing.T, s SQInterface) {
 			var wg sync.WaitGroup
+			var esum int64
 			for i := 0; i < maxGo; i++ {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
 					for i := 0; i < maxNum; i++ {
-						s.EnQueue(i)
+						if s.EnQueue(i) {
+							atomic.AddInt64(&esum, 1)
+						}
 					}
 				}()
 			}
 			wg.Wait()
-			if s.Size() != maxSize {
-				t.Fatalf("TestConcurrentEnQueue err,EnQueue:%d,real:%d", maxSize, s.Size())
+			if int64(s.Size()) != esum {
+				t.Fatalf("TestConcurrentEnQueue err,EnQueue:%d,real:%d", esum, s.Size())
 			}
 		},
 	})
@@ -279,8 +315,9 @@ func TestConcurrentEnQueueDeQueue(t *testing.T) {
 				go func() {
 					defer EnQueueWG.Done()
 					for j := 0; j < maxNum; j++ {
-						s.EnQueue(j)
-						atomic.AddInt64(&sumEnQueue, 1)
+						if s.EnQueue(j) {
+							atomic.AddInt64(&sumEnQueue, 1)
+						}
 					}
 				}()
 				DeQueueWG.Add(1)

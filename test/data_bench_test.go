@@ -57,14 +57,14 @@ type bench struct {
 func benchMap(b *testing.B, bench bench) {
 	for _, m := range [...]SQInterface{
 		// queue
-		// &UnsafeQueue{},
-		// &queue.DLQueue{},
+		&UnsafeQueue{},
+		&queue.DLQueue{},
 		&queue.DRQueue{},
-		// &queue.LAQueue{},
+		&queue.LRQueue{},
 		&queue.LLQueue{},
-		// &queue.SAQueue{},
-		// &queue.SLQueue{},
-		// &queue.SRQueue{},
+		&queue.SAQueue{},
+		&queue.SLQueue{},
+		&queue.SRQueue{},
 		&queue.Slice{},
 
 		// // stack
