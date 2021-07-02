@@ -99,6 +99,33 @@ func (n *ptrNode) free() {
 	n.next = nil
 }
 
+// node next->unsafe.Pointer
+type unsafeNode struct {
+	p    unsafe.Pointer
+	next unsafe.Pointer
+}
+
+func newUnsafeNode(i interface{}) *unsafeNode {
+	return &unsafeNode{p: unsafe.Pointer(&i)}
+}
+
+func (n *unsafeNode) load() interface{} {
+	p := atomic.LoadPointer(&n.p)
+	if p == nil {
+		return nil
+	}
+	return *(*interface{})(p)
+}
+
+func (n *unsafeNode) store(i interface{}) {
+	atomic.StorePointer(&n.p, unsafe.Pointer(&i))
+}
+
+func (n *unsafeNode) free() {
+	atomic.StorePointer(&n.p, nil)
+	atomic.StorePointer(&n.next, nil)
+}
+
 // 包含状态的node
 type stateNode struct {
 	baseNode
