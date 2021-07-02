@@ -10,6 +10,15 @@ type Stack interface {
 	Pop() (val interface{}, ok bool)
 }
 
+type DataStack interface {
+	Stack
+	onceInit()
+	Init()
+	Size() int
+	Full() bool
+	Empty() bool
+}
+
 const (
 	DefauleSize = 1 << 10
 	negativeOne = ^uint32(0) // -1
@@ -20,9 +29,29 @@ type stackNil *struct{}
 // 用一个包装nil值。
 var empty = stackNil(nil)
 
-// New return an empty Stack
+// New return an empty lock-free unbounded list Stack
 func New() Stack {
 	return &LLStack{}
+}
+
+// lock-free 数组栈
+func NewLAStack() Stack {
+	return &LAStack{}
+}
+
+// lock-free 链表栈
+func NewLLStack() Stack {
+	return &LLStack{}
+}
+
+// 单锁数组栈
+func NewSAStack() Stack {
+	return &SAStack{}
+}
+
+// 单锁链表栈
+func NewSLStack() Stack {
+	return &SLStack{}
 }
 
 func cas(p *unsafe.Pointer, old, new unsafe.Pointer) bool {
@@ -35,26 +64,4 @@ func casUint32(p *uint32, old, new uint32) bool {
 
 func casUintptr(addr *uintptr, old, new uintptr) bool {
 	return atomic.CompareAndSwapUintptr(addr, old, new)
-}
-
-// 溢出环形计算需要，得出2^n-1。(2^n>=u,具体可见kfifo）
-func minMod(u uintptr) uintptr {
-	u -= 1 //兼容0, as min as ,128->127 !255
-	u |= u >> 1
-	u |= u >> 2
-	u |= u >> 4
-	u |= u >> 8  // 32位类型已经足够
-	u |= u >> 16 // 64位
-	return u
-}
-
-// 溢出环形计算需要，得出2^n-1。(2^n>=u,具体可见kfifo）
-func modUint32(u uint32) uint32 {
-	u -= 1 //兼容0, as min as ,128->127 !255
-	u |= u >> 1
-	u |= u >> 2
-	u |= u >> 4
-	u |= u >> 8  // 32位类型已经足够
-	u |= u >> 16 // 64位
-	return u
 }

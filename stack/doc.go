@@ -7,11 +7,31 @@ type Stack interface {
 	Pop() (val interface{}, ok bool)
 }
 
+type DataStack interface {
+	Stack
+	onceInit()
+	Init()
+	Size() int
+	Full() bool
+	Empty() bool
+}
+
 type XXStack struct {
 	// 链表形式
-	//
 	// len uint32
 	// top unsafe.Pointer
+	//
+	// 可选项
+	// once sync.Once
+	// mu   sync.Mutex
+
+	// 数组形式
+	// once sync.Once
+	// len  uint32
+	// cap  uint32
+	// data []listNode
+	// 可选项
+	// mu   sync.Mutex
 }
 
 type XXNode struct {

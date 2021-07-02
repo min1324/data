@@ -12,6 +12,8 @@ type LLStack struct {
 	top unsafe.Pointer // point to the latest value pushed.
 }
 
+func (q *LLStack) onceInit() {}
+
 // Init initialize stack.
 func (s *LLStack) Init() {
 	top := atomic.LoadPointer(&s.top)
@@ -29,6 +31,14 @@ func (s *LLStack) Init() {
 		top = freeNode.next
 		freeNode.free()
 	}
+}
+
+func (q *LLStack) Full() bool {
+	return false
+}
+
+func (q *LLStack) Empty() bool {
+	return q.len == 0
 }
 
 // Size stack element's number
@@ -116,6 +126,11 @@ func (s *LAStack) InitWith(cap ...int) {
 		if oldLen == 0 {
 			break
 		}
+		slot := s.getSlot(0)
+		if slot.load() == nil {
+			// push还没添加完成，但是修改了top=1
+			continue
+		}
 		if casUint32(&s.len, oldLen, 0) {
 			s.data = make([]listNode, s.cap)
 			break
@@ -123,10 +138,19 @@ func (s *LAStack) InitWith(cap ...int) {
 	}
 }
 
+func (q *LAStack) Full() bool {
+	return q.len == q.cap
+}
+
+func (q *LAStack) Empty() bool {
+	return q.len == 0
+}
+
 // Size stack element's number
 func (s *LAStack) Size() int {
 	return int(s.len)
 }
+
 func (s *LAStack) getSlot(id uint32) node {
 	return &s.data[id]
 }
