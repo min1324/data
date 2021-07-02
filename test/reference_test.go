@@ -1,7 +1,6 @@
 package data_test
 
 import (
-	"runtime"
 	"sync"
 	"sync/atomic"
 
@@ -49,63 +48,6 @@ func (n *node) load() interface{} {
 }
 
 // -------------------------------------	stack	------------------------------------------- //
-
-// MutexStack stack with mutex
-type MutexStack struct {
-	top   *node
-	count int
-	mu    sync.Mutex
-}
-
-func (s *MutexStack) Init() {
-	s.mu.Lock()
-	e := s.top
-	s.top = nil
-	s.count = 0
-	for e != nil {
-		n := e
-		e = n.next
-		n.next = nil
-	}
-	s.mu.Unlock()
-	runtime.GC()
-}
-
-func (q *MutexStack) Full() bool {
-	return false
-}
-
-func (q *MutexStack) Empty() bool {
-	return q.count == 0
-}
-
-func (s *MutexStack) Size() int {
-	return s.count
-}
-
-func (s *MutexStack) Push(i interface{}) {
-	s.mu.Lock()
-	n := newNode(i)
-	n.next = s.top
-	s.top = n
-	s.count++
-	s.mu.Unlock()
-}
-
-func (s *MutexStack) Pop() interface{} {
-	if s.top == nil {
-		return nil
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.top == nil {
-		return nil
-	}
-	top := s.top
-	s.top = top.next
-	s.count--
-	return top.p
-}
 
 // -------------------------------------	queue	------------------------------------------- //
 

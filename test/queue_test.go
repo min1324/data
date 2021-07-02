@@ -338,8 +338,9 @@ func TestConcurrentDeQueue(t *testing.T) {
 			var sum int64
 			var EnQueueSum int64
 			for i := 0; i < maxSize; i++ {
-				s.EnQueue(i)
-				EnQueueSum += 1
+				if s.EnQueue(i) {
+					EnQueueSum += 1
+				}
 			}
 
 			for i := 0; i < maxGo; i++ {

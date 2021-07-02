@@ -1,6 +1,7 @@
 package stack
 
 import (
+	"sync"
 	"sync/atomic"
 	"unsafe"
 )
@@ -15,12 +16,12 @@ type LLStack struct {
 func (s *LLStack) Init() {
 	top := atomic.LoadPointer(&s.top)
 	for top != nil {
+		top = atomic.LoadPointer(&s.top)
 		oldLen := atomic.LoadUint32(&s.len)
 		if cas(&s.top, top, nil) {
 			atomic.AddUint32(&s.len, (^oldLen + 1))
 			break
 		}
-		top = atomic.LoadPointer(&s.top)
 	}
 	// free dummy node
 	for top != nil {
@@ -67,6 +68,109 @@ func (s *LLStack) Pop() (val interface{}, ok bool) {
 		}
 	}
 	val = slot.load()
+	if val == empty {
+		val = nil
+	}
+	slot.free()
+	return val, true
+}
+
+// LAStack a lock-free concurrent FILO array stack.
+type LAStack struct {
+	once sync.Once
+	len  uint32
+	cap  uint32
+	data []listNode
+}
+
+// 一次性初始化
+func (q *LAStack) onceInit() {
+	q.once.Do(func() {
+		q.init()
+	})
+}
+
+// 无并发初始化
+func (s *LAStack) init() {
+	if s.cap < 1 {
+		s.cap = DefauleSize
+	}
+	s.len = 0
+	s.data = make([]listNode, s.cap)
+}
+
+// Init初始化长度为: DefauleSize.
+func (s *LAStack) Init() {
+	s.InitWith()
+}
+
+// InitWith初始化长度为cap的queue,
+// 如果未提供，则使用默认值: DefauleSize.
+func (s *LAStack) InitWith(cap ...int) {
+	if len(cap) > 0 && cap[0] > 0 {
+		s.cap = uint32(cap[0])
+	}
+	s.onceInit()
+	for {
+		oldLen := atomic.LoadUint32(&s.len)
+		if oldLen == 0 {
+			break
+		}
+		if casUint32(&s.len, oldLen, 0) {
+			s.data = make([]listNode, s.cap)
+			break
+		}
+	}
+}
+
+// Size stack element's number
+func (s *LAStack) Size() int {
+	return int(s.len)
+}
+func (s *LAStack) getSlot(id uint32) node {
+	return &s.data[id]
+}
+
+// Push puts the given value at the top of the stack.
+func (s *LAStack) Push(val interface{}) bool {
+	if val == nil {
+		val = empty
+	}
+	for {
+		top := atomic.LoadUint32(&s.len)
+		if top == s.cap {
+			return false
+		}
+		slot := s.getSlot(top)
+		if slot.load() != nil {
+			continue
+		}
+		if casUint32(&s.len, top, top+1) {
+			slot.store(val)
+			break
+		}
+	}
+	return true
+}
+
+// Pop removes and returns the value at the top of the stack.
+// It returns nil if the stack is empty.
+func (s *LAStack) Pop() (val interface{}, ok bool) {
+	var slot node
+	for {
+		top := atomic.LoadUint32(&s.len)
+		if top == 0 {
+			return
+		}
+		slot = s.getSlot(top - 1)
+		val = slot.load()
+		if val == nil {
+			return
+		}
+		if casUint32(&s.len, top, top-1) {
+			break
+		}
+	}
 	if val == empty {
 		val = nil
 	}

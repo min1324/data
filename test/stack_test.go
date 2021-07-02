@@ -23,7 +23,10 @@ type stackFunc func(*testing.T, SInterface)
 func stackMap(t *testing.T, test stackStruct) {
 	for _, m := range [...]SInterface{
 		// &UnsafeQueue{},
+		&stack.LAStack{},
 		&stack.LLStack{},
+		&stack.SAStack{},
+		&stack.SLStack{},
 	} {
 		t.Run(fmt.Sprintf("%T", m), func(t *testing.T) {
 			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(SInterface)
@@ -317,8 +320,9 @@ func TestConcurrentPop(t *testing.T) {
 			var sum int64
 			var PushSum int64
 			for i := 0; i < maxSize; i++ {
-				s.Push(i)
-				PushSum += 1
+				if s.Push(i) {
+					PushSum += 1
+				}
 			}
 
 			for i := 0; i < maxGo; i++ {
