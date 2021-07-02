@@ -58,14 +58,19 @@ func benchMap(b *testing.B, bench bench) {
 	for _, m := range [...]QInterface{
 		// queue
 		// &UnsafeQueue{},
+		&queue.SLQueue{},
 		&queue.DLQueue{},
-		&queue.DRQueue{},
-		&queue.LRQueue{},
-		&queue.LLQueue{},
 		&queue.SAQueue{},
+		&queue.DRQueue{},
+		&queue.SRQueue{},
+		&queue.DLQueue{},
 		&queue.SLQueue{},
 		&queue.SRQueue{},
-		&queue.Slice{},
+		&queue.DRQueue{},
+		&queue.SAQueue{},
+
+		// &queue.SLQueue{},
+		// &queue.SRQueue{},
 
 		// // stack
 		// &MutexStack{},

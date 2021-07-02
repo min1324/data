@@ -11,7 +11,7 @@ import (
 // BUG
 
 const (
-	bit = 3
+	bit = 4
 	mod = 1<<bit - 1
 )
 
@@ -27,7 +27,7 @@ type Slice struct {
 
 	state uint32 // 不为0时，初始化,无法执行EnQueue,DeQueue.只能由Init更改
 
-	data [mod + 1]DataQueue
+	data []DataQueue
 	New  func() DataQueue
 }
 
@@ -42,33 +42,40 @@ func (s *Slice) onceInit() {
 }
 
 func (s *Slice) init() {
-	for i := 0; i < len(s.data); i++ {
+	if s.cap < 1 {
+		s.cap = mod + 1
+	}
+	s.deID = s.enID
+	s.mod = modUint32(s.cap)
+	s.cap = s.mod + 1
+	s.len = 0
+	s.data = make([]DataQueue, s.cap)
+	for i := 0; i < int(s.cap); i++ {
 		if s.New == nil {
 			// use default lock-free queue
 			s.data[i] = &LRQueue{}
 		} else {
 			s.data[i] = s.New()
 		}
-		s.data[i].onceInit()
+		s.data[i].Init()
 	}
-	if s.cap < 1 {
-		s.cap = DefauleSize
-	}
-	s.deID = s.enID
-	s.mod = modUint32(s.cap)
-	s.cap = s.mod + 1
-	s.len = 0
 }
 
 // Init prevent push new element into queue
 func (s *Slice) Init() {
+	s.InitWith()
+}
+
+// InitWith初始化长度为cap的queue,
+// 如果未提供，则使用默认值: DefauleSize.
+func (s *Slice) InitWith(cap ...int) {
+	if len(cap) > 0 && cap[0] > 0 {
+		s.cap = uint32(cap[0])
+	}
 	s.onceInit()
-	for {
-		if atomic.CompareAndSwapUint32(&s.state, 0, 1) {
-			s.init()
-			atomic.StoreUint32(&s.state, 0)
-			break
-		}
+	if atomic.CompareAndSwapUint32(&s.state, 0, 1) {
+		s.init()
+		atomic.StoreUint32(&s.state, 0)
 	}
 }
 
@@ -98,7 +105,7 @@ func (s *Slice) EnQueue(val interface{}) bool {
 	for {
 		if atomic.LoadUint32(&s.state) != 0 {
 			// Init 执行中，无法操作
-			continue
+			return false
 		}
 		enID := atomic.LoadUint32(&s.enID)
 		slot := s.getSlot(enID)
@@ -117,7 +124,7 @@ func (s *Slice) DeQueue() (val interface{}, ok bool) {
 	for {
 		if atomic.LoadUint32(&s.state) != 0 {
 			// Init 执行中，无法操作
-			continue
+			return
 		}
 		deID := atomic.LoadUint32(&s.deID)
 		if deID == atomic.LoadUint32(&s.enID) {
