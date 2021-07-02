@@ -26,19 +26,37 @@ func newNode() node {
 	return &baseNode{}
 }
 
+// interface node
 type baseNode struct {
-	// TODO 用unsafe.Pointer？
-	// p interface{}
-	p unsafe.Pointer
+	p interface{}
 }
 
 func newBaseNode(i interface{}) *baseNode {
-	// return &baseNode{p: i}
-	return &baseNode{p: unsafe.Pointer(&i)}
+	return &baseNode{p: i}
 }
 
 func (n *baseNode) load() interface{} {
-	// return n.p
+	return n.p
+}
+
+func (n *baseNode) store(i interface{}) {
+	n.p = i
+}
+
+func (n *baseNode) free() {
+	n.p = nil
+}
+
+// unsafe.Pointer node
+type unNode struct {
+	p unsafe.Pointer
+}
+
+func newUnNode(i interface{}) *unNode {
+	return &unNode{p: unsafe.Pointer(&i)}
+}
+
+func (n *unNode) load() interface{} {
 	p := atomic.LoadPointer(&n.p)
 	if p == nil {
 		return nil
@@ -46,19 +64,16 @@ func (n *baseNode) load() interface{} {
 	return *(*interface{})(p)
 }
 
-func (n *baseNode) store(i interface{}) {
-	// n.p = i
+func (n *unNode) store(i interface{}) {
 	atomic.StorePointer(&n.p, unsafe.Pointer(&i))
 }
 
-// 释放stateNode
-func (n *baseNode) free() {
-	n.p = nil
+func (n *unNode) free() {
+	atomic.StorePointer(&n.p, nil)
 }
 
 // 链表节点
 type listNode struct {
-	// TODO 用unsafe.Pointer？
 	baseNode
 	next *listNode
 }
@@ -67,10 +82,8 @@ func newListNode(i interface{}) *listNode {
 	ln := listNode{}
 	ln.store(i)
 	return &ln
-	// return &stateNode{p: unsafe.Pointer(&i)}
 }
 
-// 释放listNode
 func (n *listNode) free() {
 	n.baseNode.free()
 	n.next = nil
@@ -100,16 +113,16 @@ func (n *ptrNode) free() {
 }
 
 // node next->unsafe.Pointer
-type unsafeNode struct {
+type unListNode struct {
 	p    unsafe.Pointer
 	next unsafe.Pointer
 }
 
-func newUnsafeNode(i interface{}) *unsafeNode {
-	return &unsafeNode{p: unsafe.Pointer(&i)}
+func newUnListNode(i interface{}) *unListNode {
+	return &unListNode{p: unsafe.Pointer(&i)}
 }
 
-func (n *unsafeNode) load() interface{} {
+func (n *unListNode) load() interface{} {
 	p := atomic.LoadPointer(&n.p)
 	if p == nil {
 		return nil
@@ -117,51 +130,11 @@ func (n *unsafeNode) load() interface{} {
 	return *(*interface{})(p)
 }
 
-func (n *unsafeNode) store(i interface{}) {
+func (n *unListNode) store(i interface{}) {
 	atomic.StorePointer(&n.p, unsafe.Pointer(&i))
 }
 
-func (n *unsafeNode) free() {
+func (n *unListNode) free() {
 	atomic.StorePointer(&n.p, nil)
 	atomic.StorePointer(&n.next, nil)
-}
-
-// 包含状态的node
-type stateNode struct {
-	baseNode
-
-	// state标志node是否可用
-	// geted_stat 状态时，已经取出，可以写入。
-	// EnQUeue操作通过cas改变为EnQUeueing_stat,获得写入权限。
-	// 如无需权限，直接变为EnQUeueed.
-	//
-	// seted_stat 状态时，已经写入,可以取出。
-	// DeQueue操作通过cas改变为DeQueueing_stat,获得取出权限。
-	// 如无需权限，直接变为DeQueueed.
-	state uint32
-	next  unsafe.Pointer
-}
-
-func newStateNode(i interface{}) *stateNode {
-	sn := stateNode{}
-	sn.baseNode.store(i)
-	return &sn
-	// return &node{p: unsafe.Pointer(&i)}
-}
-
-// 释放node,状态变为:geted_stat
-func (n *stateNode) free() {
-	n.baseNode.free()
-	n.state = geted_stat
-	n.next = nil
-}
-
-// 更变node的状态
-func (n *stateNode) change(s uint32) {
-	atomic.StoreUint32(&n.state, s)
-}
-
-// 获取node的状态
-func (n *stateNode) status() uint32 {
-	return atomic.LoadUint32(&n.state)
 }

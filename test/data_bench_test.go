@@ -58,14 +58,15 @@ func benchMap(b *testing.B, bench bench) {
 	for _, m := range [...]SQInterface{
 		// queue
 		// &UnsafeQueue{},
-		&queue.DLQueue{},
-		&queue.DRQueue{},
+		// &queue.DLQueue{},
+		// &queue.DRQueue{},
 		&queue.LRQueue{},
 		&queue.LLQueue{},
-		&queue.SAQueue{},
-		&queue.SLQueue{},
-		&queue.SRQueue{},
-		&queue.Slice{},
+		&queue.LLQueueUnsafe{},
+		// &queue.SAQueue{},
+		// &queue.SLQueue{},
+		// &queue.SRQueue{},
+		// &queue.Slice{},
 
 		// // stack
 		// &MutexStack{},
@@ -116,7 +117,7 @@ func BenchmarkEnQueue(b *testing.B) {
 }
 
 func BenchmarkDeQueue(b *testing.B) {
-	const prevsize = 1 << 25
+	const prevsize = 1 << 24
 	benchMap(b, bench{
 		setup: func(b *testing.B, m SQInterface) {
 			for i := 0; i < prevsize; i++ {
@@ -133,7 +134,8 @@ func BenchmarkDeQueue(b *testing.B) {
 }
 
 func BenchmarkMostlyEnQueue(b *testing.B) {
-
+	const bit = 4
+	const mark = 1<<bit - 1
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
 			for i := 0; i < prevEnQueueSize; i++ {
@@ -143,10 +145,10 @@ func BenchmarkMostlyEnQueue(b *testing.B) {
 
 		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
 			for ; pb.Next(); i++ {
-				j := i % 8
-				m.EnQueue(i)
-				if j == 0 {
+				if mark == 0 {
 					m.DeQueue()
+				} else {
+					m.EnQueue(i)
 				}
 			}
 		},
@@ -154,6 +156,8 @@ func BenchmarkMostlyEnQueue(b *testing.B) {
 }
 
 func BenchmarkMostlyDeQueue(b *testing.B) {
+	const bit = 4
+	const mark = 1<<bit - 1
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
 			for i := 0; i < prevEnQueueSize; i++ {
@@ -163,46 +167,7 @@ func BenchmarkMostlyDeQueue(b *testing.B) {
 
 		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
 			for ; pb.Next(); i++ {
-				j := i % 8
-				if j == 0 {
-					m.EnQueue(i)
-				}
-				m.DeQueue()
-			}
-		},
-	})
-}
-
-func BenchmarkEnQueueDeQueueBalance(b *testing.B) {
-
-	benchMap(b, bench{
-		setup: func(_ *testing.B, m SQInterface) {
-			for i := 0; i < prevEnQueueSize; i++ {
-				m.EnQueue(i)
-			}
-		},
-
-		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
-			for ; pb.Next(); i++ {
-				m.EnQueue(i)
-				m.DeQueue()
-			}
-		},
-	})
-}
-
-func BenchmarkEnQueueDeQueueCollision(b *testing.B) {
-
-	benchMap(b, bench{
-		setup: func(_ *testing.B, m SQInterface) {
-			for i := 0; i < prevEnQueueSize; i++ {
-				m.EnQueue(i)
-			}
-		},
-
-		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
-			for ; pb.Next(); i++ {
-				if i%2 == 0 {
+				if i&mark == 0 {
 					m.EnQueue(i)
 				} else {
 					m.DeQueue()
@@ -212,7 +177,46 @@ func BenchmarkEnQueueDeQueueCollision(b *testing.B) {
 	})
 }
 
-func BenchmarkEnQueueDeQueueInterlace(b *testing.B) {
+func BenchmarkBalance(b *testing.B) {
+
+	benchMap(b, bench{
+		setup: func(_ *testing.B, m SQInterface) {
+			for i := 0; i < prevEnQueueSize; i++ {
+				m.EnQueue(i)
+			}
+		},
+
+		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
+			for ; pb.Next(); i++ {
+				m.EnQueue(i)
+				m.DeQueue()
+			}
+		},
+	})
+}
+
+func BenchmarkCollision(b *testing.B) {
+
+	benchMap(b, bench{
+		setup: func(_ *testing.B, m SQInterface) {
+			for i := 0; i < prevEnQueueSize; i++ {
+				m.EnQueue(i)
+			}
+		},
+
+		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
+			for ; pb.Next(); i++ {
+				if i&1 == 0 {
+					m.EnQueue(i)
+				} else {
+					m.DeQueue()
+				}
+			}
+		},
+	})
+}
+
+func BenchmarkInterlace(b *testing.B) {
 
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
@@ -235,7 +239,7 @@ func BenchmarkEnQueueDeQueueInterlace(b *testing.B) {
 	})
 }
 
-func BenchmarkConcurrentEnQueueDeQueue(b *testing.B) {
+func BenchmarkConcurrentDeQueue(b *testing.B) {
 
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
@@ -269,7 +273,8 @@ func BenchmarkConcurrentEnQueueDeQueue(b *testing.B) {
 		},
 	})
 }
-func BenchmarkConcurrentDeQueueEnQueue(b *testing.B) {
+
+func BenchmarkConcurrentEnQueue(b *testing.B) {
 
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
@@ -299,91 +304,6 @@ func BenchmarkConcurrentDeQueueEnQueue(b *testing.B) {
 			}()
 			for ; pb.Next(); i++ {
 				m.EnQueue(1)
-			}
-		},
-	})
-}
-
-func BenchmarkConcurrentMostlyEnQueue(b *testing.B) {
-
-	benchMap(b, bench{
-		setup: func(_ *testing.B, m SQInterface) {
-			if _, ok := m.(*UnsafeQueue); ok {
-				b.Skip("UnsafeQueue can not test concurrent.")
-			}
-		},
-		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
-			var wg sync.WaitGroup
-			exit := make(chan struct{}, 1)
-			defer func() {
-				close(exit)
-				wg.Wait()
-				exit = nil
-			}()
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for {
-					select {
-					case <-exit:
-						return
-					default:
-						time.Sleep(time.Millisecond * time.Duration(rand.Intn(100)))
-						m.DeQueue()
-					}
-				}
-			}()
-			for ; pb.Next(); i++ {
-				m.EnQueue(1)
-			}
-		},
-	})
-}
-
-func BenchmarkConcurrent(b *testing.B) {
-	const stackSize = 1 << 10
-	const EnQueue, DeQueue = 128, 1
-
-	benchMap(b, bench{
-		setup: func(_ *testing.B, m SQInterface) {
-			if _, ok := m.(*UnsafeQueue); ok {
-				b.Skip("UnsafeQueue can not test concurrent.")
-			}
-		},
-		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
-			var wg sync.WaitGroup
-			exit := make(chan struct{}, 1)
-			defer func() {
-				close(exit)
-				wg.Wait()
-				exit = nil
-			}()
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for {
-					select {
-					case <-exit:
-						return
-					default:
-						m.EnQueue(1)
-					}
-				}
-			}()
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for {
-					select {
-					case <-exit:
-						return
-					default:
-						m.DeQueue()
-					}
-				}
-			}()
-			for ; pb.Next(); i++ {
-				m.Size()
 			}
 		},
 	})

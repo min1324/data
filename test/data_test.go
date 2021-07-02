@@ -25,9 +25,10 @@ func testStack(t *testing.T, test test) {
 		// &queue.DLQueue{},
 		// &queue.DRQueue{},
 		&queue.LLQueue{},
-		// &queue.LRQueue{},
+		&queue.LLQueueUnsafe{},
+		&queue.LRQueue{},
 		// &queue.SAQueue{},
-		&queue.SLQueue{},
+		// &queue.SLQueue{},
 		// &queue.SRQueue{},
 		// &queue.Slice{},
 
@@ -253,7 +254,7 @@ func TestConcurrentEnQueue(t *testing.T) {
 }
 
 func TestConcurrentDeQueue(t *testing.T) {
-	const maxGo, maxNum = 4, 1 << 10
+	const maxGo, maxNum = 4, 1 << 20
 	const maxSize = maxGo * maxNum
 
 	testStack(t, test{
