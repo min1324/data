@@ -22,7 +22,6 @@ type stackFunc func(*testing.T, SInterface)
 
 func stackMap(t *testing.T, test stackStruct) {
 	for _, m := range [...]SInterface{
-		// &UnsafeQueue{},
 		&stack.LAStack{},
 		&stack.LLStack{},
 		&stack.SAStack{},

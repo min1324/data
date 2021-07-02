@@ -116,9 +116,10 @@ func (s *LAStack) Init() {
 
 // InitWith初始化长度为cap的queue,
 // 如果未提供，则使用默认值: DefauleSize.
-func (s *LAStack) InitWith(cap ...int) {
-	if len(cap) > 0 && cap[0] > 0 {
-		s.cap = uint32(cap[0])
+func (s *LAStack) InitWith(caps ...int) {
+	var cap = DefauleSize
+	if len(caps) > 0 && caps[0] > 0 {
+		cap = caps[0]
 	}
 	s.onceInit()
 	for {
@@ -126,20 +127,28 @@ func (s *LAStack) InitWith(cap ...int) {
 		if oldLen == 0 {
 			// 这里有可能并发push,
 			if casUint32(&s.len, oldLen, s.cap) {
-				s.data = make([]listNode, s.cap)
-				s.len = 0
+				if cap > int(s.cap) {
+					s.data = make([]listNode, cap)
+					s.len = 0
+					s.cap = uint32(cap)
+				} else {
+					s.cap = uint32(cap)
+					s.data = make([]listNode, cap)
+					s.len = 0
+				}
 				break
 			}
 			// push已经改了top,用下面的方法
 			continue
 		}
-		slot := s.getSlot(0)
+		slot := s.getSlot(oldLen - 1)
 		if slot.load() == nil {
 			// push还没添加完成，但是修改了top=1
 			continue
 		}
 		if casUint32(&s.len, oldLen, 0) {
-			s.data = make([]listNode, s.cap)
+			s.cap = uint32(cap)
+			s.data = make([]listNode, cap)
 			break
 		}
 	}
@@ -169,7 +178,7 @@ func (s *LAStack) Push(val interface{}) bool {
 	}
 	for {
 		top := atomic.LoadUint32(&s.len)
-		if top == s.cap {
+		if top >= s.cap {
 			return false
 		}
 		slot := s.getSlot(top)
@@ -190,7 +199,8 @@ func (s *LAStack) Pop() (val interface{}, ok bool) {
 	var slot node
 	for {
 		top := atomic.LoadUint32(&s.len)
-		if top == 0 {
+		if top == 0 || top > s.cap {
+			// top > s.cap withInit时缩短stack,肯能出现情况
 			return
 		}
 		slot = s.getSlot(top - 1)
