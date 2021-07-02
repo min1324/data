@@ -170,22 +170,6 @@ func (q *LLQueue) Empty() bool {
 	return q.head == q.tail
 }
 
-// range用于调试
-func (q *LLQueue) Range(f func(interface{})) {
-	if q.Empty() {
-		return
-	}
-
-	head := q.head
-	tail := q.tail
-	for head != tail && head != nil {
-		headNode := (*ptrNode)(head)
-		n := (*ptrNode)(headNode.next)
-		f(n.load())
-		head = headNode.next
-	}
-}
-
 // lock-free queue implement with array
 //
 // LRQueue is a lock-free ring array queue.
