@@ -1,91 +1,60 @@
 package stack
 
 import (
-	"runtime"
 	"sync/atomic"
 	"unsafe"
 )
 
-// Stack a lock-free concurrent FILO stack.
-type Stack struct {
-	top unsafe.Pointer // point to the latest value pushed.
-	len uintptr        // stack value num.
+type Stack interface {
+	Push(i interface{}) bool
+	Pop() (val interface{}, ok bool)
 }
+
+const (
+	DefauleSize = 1 << 10
+	negativeOne = ^uint32(0) // -1
+)
+
+type stackNil *struct{}
+
+// 用一个包装nil值。
+var empty = stackNil(nil)
 
 // New return an empty Stack
-func New() *Stack {
-	return &Stack{}
+func New() Stack {
+	return &LLStack{}
 }
 
-type node struct {
-	p    interface{}    // value store
-	next unsafe.Pointer // next node
+func cas(p *unsafe.Pointer, old, new unsafe.Pointer) bool {
+	return atomic.CompareAndSwapPointer(p, old, new)
 }
 
-func newNode(i interface{}) *node {
-	return &node{p: i}
-	// return &node{p: unsafe.Pointer(&i)}
+func casUint32(p *uint32, old, new uint32) bool {
+	return atomic.CompareAndSwapUint32(p, old, new)
 }
 
-func (n *node) load() interface{} {
-	return n.p
-	//return *(*interface{})(n.p)
+func casUintptr(addr *uintptr, old, new uintptr) bool {
+	return atomic.CompareAndSwapUintptr(addr, old, new)
 }
 
-// Init initialize stack.
-func (s *Stack) Init() {
-	e := atomic.LoadPointer(&s.top)
-	for e != nil {
-		e = atomic.LoadPointer(&s.top)
-		if cas(&s.top, e, nil) {
-			// free dummy node
-			for e != nil {
-				node := (*node)(e)
-				e = node.next
-				node.next = nil
-				atomic.AddUintptr(&s.len, ^uintptr(0))
-			}
-			runtime.GC()
-			return
-		}
-	}
+// 溢出环形计算需要，得出2^n-1。(2^n>=u,具体可见kfifo）
+func minMod(u uintptr) uintptr {
+	u -= 1 //兼容0, as min as ,128->127 !255
+	u |= u >> 1
+	u |= u >> 2
+	u |= u >> 4
+	u |= u >> 8  // 32位类型已经足够
+	u |= u >> 16 // 64位
+	return u
 }
 
-// Size stack element's number
-func (s *Stack) Size() int {
-	return int(atomic.LoadUintptr(&s.len))
-}
-
-// Push puts the given value at the top of the stack.
-func (s *Stack) Push(i interface{}) {
-	slot := newNode(i)
-	for {
-		slot.next = atomic.LoadPointer(&s.top)
-		if cas(&s.top, slot.next, unsafe.Pointer(slot)) {
-			atomic.AddUintptr(&s.len, 1)
-			break
-		}
-	}
-}
-
-// Pop removes and returns the value at the top of the stack.
-// It returns nil if the stack is empty.
-func (s *Stack) Pop() interface{} {
-	for {
-		top := atomic.LoadPointer(&s.top)
-		if top == nil {
-			break
-		}
-		slot := (*node)(top)
-		if cas(&s.top, top, slot.next) {
-			slot.next = nil
-			atomic.AddUintptr(&s.len, ^uintptr(0))
-			return slot.load()
-		}
-	}
-	return nil
-}
-
-func cas(addr *unsafe.Pointer, old, new unsafe.Pointer) bool {
-	return atomic.CompareAndSwapPointer(addr, old, new)
+// 溢出环形计算需要，得出2^n-1。(2^n>=u,具体可见kfifo）
+func modUint32(u uint32) uint32 {
+	u -= 1 //兼容0, as min as ,128->127 !255
+	u |= u >> 1
+	u |= u >> 2
+	u |= u >> 4
+	u |= u >> 8  // 32位类型已经足够
+	u |= u >> 16 // 64位
+	return u
 }
