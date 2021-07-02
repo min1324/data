@@ -57,15 +57,15 @@ type bench struct {
 func benchMap(b *testing.B, bench bench) {
 	for _, m := range [...]SQInterface{
 		// queue
-		&UnsafeQueue{},
-		&queue.DLQueue{},
-		&queue.DRQueue{},
-		&queue.LRQueue{},
+		// &UnsafeQueue{},
+		// &queue.DLQueue{},
+		// &queue.DRQueue{},
+		// &queue.LRQueue{},
 		&queue.LLQueue{},
-		&queue.SAQueue{},
+		// &queue.SAQueue{},
 		&queue.SLQueue{},
-		&queue.SRQueue{},
-		&queue.Slice{},
+		// &queue.SRQueue{},
+		// &queue.Slice{},
 
 		// // stack
 		// &MutexStack{},
@@ -78,6 +78,9 @@ func benchMap(b *testing.B, bench bench) {
 				q.InitWith(queueMaxSize)
 			}
 			if q, ok := m.(*queue.DRQueue); ok {
+				q.InitWith(queueMaxSize)
+			}
+			if q, ok := m.(*queue.SRQueue); ok {
 				q.InitWith(queueMaxSize)
 			}
 
@@ -113,10 +116,10 @@ func BenchmarkEnQueue(b *testing.B) {
 }
 
 func BenchmarkDeQueue(b *testing.B) {
-
+	const prevsize = 1 << 25
 	benchMap(b, bench{
 		setup: func(b *testing.B, m SQInterface) {
-			for i := 0; i < prevEnQueueSize; i++ {
+			for i := 0; i < prevsize; i++ {
 				m.EnQueue(i)
 			}
 		},
@@ -140,7 +143,7 @@ func BenchmarkMostlyEnQueue(b *testing.B) {
 
 		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
 			for ; pb.Next(); i++ {
-				j := i % 4
+				j := i % 8
 				m.EnQueue(i)
 				if j == 0 {
 					m.DeQueue()
@@ -346,9 +349,6 @@ func BenchmarkConcurrent(b *testing.B) {
 			if _, ok := m.(*UnsafeQueue); ok {
 				b.Skip("UnsafeQueue can not test concurrent.")
 			}
-			if q, ok := m.(*queue.LRQueue); ok {
-				q.InitWith(queueMaxSize)
-			}
 		},
 		perG: func(b *testing.B, pb *testing.PB, i int, m SQInterface) {
 			var wg sync.WaitGroup
@@ -416,7 +416,7 @@ func BenchmarkConcurrentRand(b *testing.B) {
 					case <-exit:
 						return
 					default:
-						if j^7 == 0 {
+						if (j^9)&1 == 0 {
 							m.EnQueue(j)
 						} else {
 							m.DeQueue()
@@ -433,7 +433,7 @@ func BenchmarkConcurrentRand(b *testing.B) {
 					case <-exit:
 						return
 					default:
-						if j^3 == 0 {
+						if (j^2)&1 == 0 {
 							m.EnQueue(j)
 						} else {
 							m.DeQueue()
@@ -443,7 +443,12 @@ func BenchmarkConcurrentRand(b *testing.B) {
 				}
 			}()
 			for ; pb.Next(); i++ {
-				m.Size()
+				if (j^3)&1 == 0 {
+					m.EnQueue(j)
+				} else {
+					m.DeQueue()
+				}
+				atomic.AddUint64(&j, 1)
 			}
 		},
 	})

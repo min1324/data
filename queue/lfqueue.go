@@ -21,20 +21,22 @@ type LLQueue struct {
 	// len is num of value store in queue
 	len uint32
 
-	// head指向哨兵位，不存数据。tail可能指向队尾元素。
+	// head指向第一个取数据的node。tail可能指向队尾元素。
 	//
 	// 出队操作，先检测head==tail判断队列是否空。
-	// slot指向 head.next 先标记需要出队的数据。
-	// 然后通过cas将head指针指向slot以获得出队权限。
-	// 释放旧head.
+	// slot指向head先标记需要出队的数据。
+	// 如果slot的val是空，表明队列空。
+	// 然后通过cas将head指针指向slot.next以移除slot。
+	// 释放slot.
 	//
 	// 入队操作，由于是链表队列，大小无限制，
 	// 队列无满条件或者直到用完内存。不用判断是否满。
-	// 先判断tail是否指向最后一个，通过:tail.next==nil
-	// 如果不是，则需要让tail指向下一个来提升tail,直到tail指向最后一个。
-	// 通过cas将slot加入tail.
+	// 让tail指向最后一个node,如果不是，提升tail,直到tail指向最后一个。
+	// slot指向最后一个node,即slot=tail
+	// 通过cas加入一个空node在slot.next后面
+	// 将val存在slot里面
 	//
-	// stat只有EnQueueed和DeQueueed状态。
+	// head只能在DeQueue里面修改，tail只能在Enqueue修改。
 	head unsafe.Pointer
 	tail unsafe.Pointer
 }
@@ -50,10 +52,8 @@ func (q *LLQueue) onceInit() {
 	})
 }
 
-// 线程不安全初始化，只在声明队列后，
-// 使用EnQueue或者DeQueue前调用一次。
 func (q *LLQueue) init() {
-	q.head = unsafe.Pointer(&stateNode{})
+	q.head = unsafe.Pointer(newPrtNode(nil))
 	q.tail = q.head
 	q.len = 0
 }
@@ -68,20 +68,6 @@ func (q *LLQueue) Init() {
 			return
 		}
 		// 置空队列
-
-		// 让head指向tail,置空队列，但是len并未置空，
-		//
-		// 因为置空队列，然后len=0两个操作期间，其他线程可能EnQueue。
-		// I为Init，P为Push，运行路线可能：I将head指向tail,P通过EnQueue成功加入数据，len增加1，I将len置0.与预期1不相符。
-		// 所以len无法直接置0。
-		//
-		// 如果先置len=0,再cas置空队列。
-		// I为Init，P为Pop，运行路线可能：P将head指向 head.next,I将len置0.P将len-1(即是-1)，与预期0不相符。
-		//
-		// 两种方案：释放旧node时减少len,或在一次性更新len
-		// 期间调用Size()无法获得正确的长度。
-
-		// 方案1,一次性更新len
 		oldLen := atomic.LoadUint32(&q.len)
 		if cas(&q.head, head, tail) {
 			// cas成功，表明期间并无其他操作，队列已经空了，但是len还没置0
@@ -95,34 +81,27 @@ func (q *LLQueue) Init() {
 			}
 
 			for head != tail && head != nil {
-				freeNode := (*stateNode)(head)
+				freeNode := (*ptrNode)(head)
 				head = freeNode.next
 				freeNode.free()
 			}
 			return
 		}
-		// // 方案2,释放旧node,len-1
-		// if cas(&q.head, head, tail) {
-		// 	for head != tail && head != nil {
-		// 		freeNode := (*stateNode)(head)
-		// 		head = freeNode.next
-		// 		freeNode.free()
-		// 		atomic.AddUint32(&q.len, negativeOne)
-		// 	}
-		// 	return
-		// }
 	}
 }
 
 func (q *LLQueue) EnQueue(val interface{}) bool {
 	q.onceInit()
-	slot := newStateNode(val)
-	slotPtr := unsafe.Pointer(slot)
+	if val == nil {
+		val = empty
+	}
+	// slot = tail,在slot.next插入一个空位，
+	// 然后移动tail到空位,将数据保存在slot中
+	nilNode := unsafe.Pointer(newPrtNode(nil))
 	for {
 		// 先取一下尾指针和尾指针的next
 		tail := atomic.LoadPointer(&q.tail)
-		tailNode := (*stateNode)(tail)
-		tailNext := tailNode.next
+		slot := (*ptrNode)(tail)
 
 		// 如果尾指针已经被移动了，则重新开始
 		if tail != atomic.LoadPointer(&q.tail) {
@@ -130,19 +109,18 @@ func (q *LLQueue) EnQueue(val interface{}) bool {
 		}
 
 		// 如果尾指针的next!=nil，则提升tail直到指向最后一个位置
-		if tailNext != nil {
-			cas(&q.tail, tail, tailNext)
+		if slot.next != nil {
+			cas(&q.tail, tail, slot.next)
 			continue
 		}
 
 		// next==nil,确定是最后一个
-		if cas(&tailNode.next, tailNext, slotPtr) {
+		if cas(&slot.next, nil, nilNode) {
 			// 已经成功加入节点，尝试将 tail 提升到最新。
-			cas(&q.tail, tail, slotPtr)
-			// 更新len
+			cas(&q.tail, tail, nilNode)
 			atomic.AddUint32(&q.len, 1)
 			// 完成添加，将slot设置为可用，让等待的DeQueue可以取走
-			slot.change(seted_stat)
+			slot.store(val)
 			break
 		}
 	}
@@ -158,8 +136,7 @@ func (q *LLQueue) DeQueue() (val interface{}, ok bool) {
 		//取出头指针，尾指针，和第一个node指针
 		head := atomic.LoadPointer(&q.head)
 		tail := atomic.LoadPointer(&q.tail)
-		headNode := (*stateNode)(head)
-		headNext := headNode.next
+		slot := (*ptrNode)(head)
 
 		// Q->head 其他DeQueue成功获得slot.指针已移动，重新取 head指针
 		if head != atomic.LoadPointer(&q.head) {
@@ -167,42 +144,28 @@ func (q *LLQueue) DeQueue() (val interface{}, ok bool) {
 		}
 
 		if head == tail {
-			// 队列可能空，可能tail落后。
-			if headNext == nil {
-				// 空队列返回
+			// 即便tail落后了，也不提升。
+			// tail只能在EnQueue里改变
+			// return nil, false
+			if slot.next == nil {
 				return nil, false
 			}
-			// 此时head,tail指向同一个位置，并且有新增node
-			// tail指针落后了,需要提升tail到下一个node,(tailNext==headNext)
-			cas(&q.tail, tail, headNext)
+			cas(&q.tail, tail, slot.next)
 			continue
 		}
-		// 取出slot
-
 		// 先记录slot，然后尝试取出
-		slot := (*stateNode)(headNext)
-		if slot.status() != seted_stat {
-			// TODO
-			// EnQueue还没添加完成。
-			// 方案1：直接返回nil。
-			return nil, false
-
-			// 方案2：等待EnQueue添加完成
-			// continue
-		}
-
-		// 记录值，再尝试获取slot.
-		// 如果先获取slot,再记录值。会出现的问题：
-		// DeQueue1通过cas获取slot后暂停。DeQueue2获取到slot.next,调用headNode.free()，将slot释放掉
-		// 此时slot已经被清空，获取到nil值。与预期不符。
 		val := slot.load()
-		if cas(&q.head, head, headNext) {
-			// 成功取出slot,此时的slot可能被其他DeQueue释放。
-			// len-1
+		if val == nil {
+			// Enqueue还没添加完成，直接退出
+			return nil, false
+		}
+		if cas(&q.head, head, slot.next) {
+			// 成功取出slot
 			atomic.AddUint32(&q.len, negativeOne)
-
-			// 释放head指向上次DeQueue操作的slot.
-			headNode.free()
+			if val == empty {
+				val = nil
+			}
+			slot.free()
 			return val, true
 		}
 	}

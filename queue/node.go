@@ -28,21 +28,27 @@ func newNode() node {
 
 type baseNode struct {
 	// TODO 用unsafe.Pointer？
-	p interface{}
+	// p interface{}
+	p unsafe.Pointer
 }
 
 func newBaseNode(i interface{}) *baseNode {
-	return &baseNode{p: i}
-	// return &stateNode{p: unsafe.Pointer(&i)}
+	// return &baseNode{p: i}
+	return &baseNode{p: unsafe.Pointer(&i)}
 }
 
 func (n *baseNode) load() interface{} {
-	return n.p
-	//return *(*interface{})(n.p)
+	// return n.p
+	p := atomic.LoadPointer(&n.p)
+	if p == nil {
+		return nil
+	}
+	return *(*interface{})(p)
 }
 
 func (n *baseNode) store(i interface{}) {
-	n.p = i
+	// n.p = i
+	atomic.StorePointer(&n.p, unsafe.Pointer(&i))
 }
 
 // 释放stateNode
@@ -72,20 +78,24 @@ func (n *listNode) free() {
 
 // node next->unsafe.Pointer
 type ptrNode struct {
-	baseNode
+	p    interface{}
 	next unsafe.Pointer
 }
 
 func newPrtNode(i interface{}) *ptrNode {
-	pn := ptrNode{}
-	pn.store(i)
-	return &pn
-	// return &stateNode{p: unsafe.Pointer(&i)}
+	return &ptrNode{p: i}
 }
 
-// 释放ptrNode
+func (n *ptrNode) load() interface{} {
+	return n.p
+}
+
+func (n *ptrNode) store(i interface{}) {
+	n.p = i
+}
+
 func (n *ptrNode) free() {
-	n.baseNode.free()
+	n.p = nil
 	n.next = nil
 }
 

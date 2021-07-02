@@ -21,15 +21,15 @@ type testFunc func(*testing.T, SQInterface)
 
 func testStack(t *testing.T, test test) {
 	for _, m := range [...]SQInterface{
-		&UnsafeQueue{},
-		&queue.DLQueue{},
-		&queue.DRQueue{},
+		// &UnsafeQueue{},
+		// &queue.DLQueue{},
+		// &queue.DRQueue{},
 		&queue.LLQueue{},
-		&queue.LRQueue{},
-		&queue.SAQueue{},
-		&queue.SLQueue{},
-		&queue.SRQueue{},
-		&queue.Slice{},
+		// &queue.LRQueue{},
+		// &queue.SAQueue{},
+		// &queue.SLQueue{},
+		// &queue.SRQueue{},
+		// &queue.Slice{},
 
 		// &MutexStack{},
 		// &stack.Stack{},
@@ -177,6 +177,7 @@ func TestEnQueue(t *testing.T) {
 		setup: func(t *testing.T, s SQInterface) {
 		},
 		perG: func(t *testing.T, s SQInterface) {
+			sum = 0
 			for i := 0; i < maxSize; i++ {
 				if s.EnQueue(i) {
 					atomic.AddInt64(&sum, 1)
@@ -184,7 +185,7 @@ func TestEnQueue(t *testing.T) {
 			}
 
 			if s.Size() != int(sum) {
-				t.Fatalf("TestConcurrentEnQueue err,EnQueue:%d,real:%d", maxSize, s.Size())
+				t.Fatalf("TestConcurrentEnQueue err,EnQueue:%d,real:%d", sum, s.Size())
 			}
 		},
 	})
@@ -197,6 +198,7 @@ func TestDeQueue(t *testing.T) {
 		setup: func(t *testing.T, s SQInterface) {
 		},
 		perG: func(t *testing.T, s SQInterface) {
+			sum = 0
 			for i := 0; i < maxSize; i++ {
 				if s.EnQueue(i) {
 					atomic.AddInt64(&sum, 1)
