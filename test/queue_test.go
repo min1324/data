@@ -13,15 +13,15 @@ import (
 	"github.com/min1324/data/queue"
 )
 
-type test struct {
-	setup func(*testing.T, SQInterface)
-	perG  func(*testing.T, SQInterface)
+type queueStruct struct {
+	setup func(*testing.T, QInterface)
+	perG  func(*testing.T, QInterface)
 }
 
-type testFunc func(*testing.T, SQInterface)
+type queueFunc func(*testing.T, QInterface)
 
-func testStack(t *testing.T, test test) {
-	for _, m := range [...]SQInterface{
+func queueMap(t *testing.T, test queueStruct) {
+	for _, m := range [...]QInterface{
 		// &UnsafeQueue{},
 		&queue.DLQueue{},
 		&queue.DRQueue{},
@@ -31,12 +31,9 @@ func testStack(t *testing.T, test test) {
 		&queue.SLQueue{},
 		&queue.SRQueue{},
 		// &queue.Slice{},
-
-		// &MutexStack{},
-		// &stack.Stack{},
 	} {
 		t.Run(fmt.Sprintf("%T", m), func(t *testing.T) {
-			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(SQInterface)
+			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(QInterface)
 			m.Init()
 			if q, ok := m.(*queue.LRQueue); ok {
 				q.InitWith(queueMaxSize)
@@ -58,10 +55,10 @@ func testStack(t *testing.T, test test) {
 
 func TestInit(t *testing.T) {
 
-	testStack(t, test{
-		setup: func(t *testing.T, s SQInterface) {
+	queueMap(t, queueStruct{
+		setup: func(t *testing.T, s QInterface) {
 		},
-		perG: func(t *testing.T, s SQInterface) {
+		perG: func(t *testing.T, s QInterface) {
 			// 初始化测试，
 			if s.Size() != 0 {
 				t.Fatalf("init size != 0 :%d", s.Size())
@@ -174,10 +171,10 @@ func TestInit(t *testing.T) {
 func TestEnQueue(t *testing.T) {
 	const maxSize = 1 << 10
 	var sum int64
-	testStack(t, test{
-		setup: func(t *testing.T, s SQInterface) {
+	queueMap(t, queueStruct{
+		setup: func(t *testing.T, s QInterface) {
 		},
-		perG: func(t *testing.T, s SQInterface) {
+		perG: func(t *testing.T, s QInterface) {
 			sum = 0
 			for i := 0; i < maxSize; i++ {
 				if s.EnQueue(i) {
@@ -195,10 +192,10 @@ func TestEnQueue(t *testing.T) {
 func TestDeQueue(t *testing.T) {
 	const maxSize = 1 << 10
 	var sum int64
-	testStack(t, test{
-		setup: func(t *testing.T, s SQInterface) {
+	queueMap(t, queueStruct{
+		setup: func(t *testing.T, s QInterface) {
 		},
-		perG: func(t *testing.T, s SQInterface) {
+		perG: func(t *testing.T, s QInterface) {
 			sum = 0
 			for i := 0; i < maxSize; i++ {
 				if s.EnQueue(i) {
@@ -225,13 +222,13 @@ func TestConcurrentInit(t *testing.T) {
 	const maxGo = 4
 	var timeout = time.Second * 5
 
-	testStack(t, test{
-		setup: func(t *testing.T, s SQInterface) {
+	queueMap(t, queueStruct{
+		setup: func(t *testing.T, s QInterface) {
 			if _, ok := s.(*UnsafeQueue); ok {
 				t.Skip("UnsafeQueue can not test concurrent.")
 			}
 		},
-		perG: func(t *testing.T, s SQInterface) {
+		perG: func(t *testing.T, s QInterface) {
 			var wg sync.WaitGroup
 			ctx, cancle := context.WithTimeout(context.Background(), timeout)
 
@@ -298,13 +295,13 @@ func TestConcurrentEnQueue(t *testing.T) {
 	const maxGo, maxNum = 4, 1 << 8
 	const maxSize = maxGo * maxNum
 
-	testStack(t, test{
-		setup: func(t *testing.T, s SQInterface) {
+	queueMap(t, queueStruct{
+		setup: func(t *testing.T, s QInterface) {
 			if _, ok := s.(*UnsafeQueue); ok {
 				t.Skip("UnsafeQueue can not test concurrent.")
 			}
 		},
-		perG: func(t *testing.T, s SQInterface) {
+		perG: func(t *testing.T, s QInterface) {
 			var wg sync.WaitGroup
 			var esum int64
 			for i := 0; i < maxGo; i++ {
@@ -330,13 +327,13 @@ func TestConcurrentDeQueue(t *testing.T) {
 	const maxGo, maxNum = 4, 1 << 20
 	const maxSize = maxGo * maxNum
 
-	testStack(t, test{
-		setup: func(t *testing.T, s SQInterface) {
+	queueMap(t, queueStruct{
+		setup: func(t *testing.T, s QInterface) {
 			if _, ok := s.(*UnsafeQueue); ok {
 				t.Skip("UnsafeQueue can not test concurrent.")
 			}
 		},
-		perG: func(t *testing.T, s SQInterface) {
+		perG: func(t *testing.T, s QInterface) {
 			var wg sync.WaitGroup
 			var sum int64
 			var EnQueueSum int64
@@ -370,13 +367,13 @@ func TestConcurrentEnQueueDeQueue(t *testing.T) {
 	const maxGo, maxNum = 4, 1 << 10
 	const maxSize = maxGo * maxNum
 
-	testStack(t, test{
-		setup: func(t *testing.T, s SQInterface) {
+	queueMap(t, queueStruct{
+		setup: func(t *testing.T, s QInterface) {
 			if _, ok := s.(*UnsafeQueue); ok {
 				t.Skip("UnsafeQueue can not test concurrent.")
 			}
 		},
-		perG: func(t *testing.T, s SQInterface) {
+		perG: func(t *testing.T, s QInterface) {
 			var DeQueueWG sync.WaitGroup
 			var EnQueueWG sync.WaitGroup
 

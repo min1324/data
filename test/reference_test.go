@@ -15,12 +15,20 @@ const (
 	null = ^uintptr(0) // -1
 )
 
-// SQInterface use in stack,queue testing
-type SQInterface interface {
+// QInterface use in stack,queue testing
+type QInterface interface {
 	Init()
 	Size() int
 	EnQueue(interface{}) bool
 	DeQueue() (interface{}, bool)
+}
+
+// SQInterface use in stack,queue testing
+type SInterface interface {
+	Init()
+	Size() int
+	Push(interface{}) bool
+	Pop() (interface{}, bool)
 }
 
 // node stack,queue node
