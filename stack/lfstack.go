@@ -122,36 +122,15 @@ func (s *LAStack) InitWith(caps ...int) {
 		cap = caps[0]
 	}
 	s.onceInit()
-	for {
-		oldLen := atomic.LoadUint32(&s.len)
-		if oldLen == 0 {
-			// 这里有可能并发push,
-			if casUint32(&s.len, oldLen, s.cap) {
-				if cap > int(s.cap) {
-					s.data = make([]listNode, cap)
-					s.len = 0
-					s.cap = uint32(cap)
-				} else {
-					s.cap = uint32(cap)
-					s.data = make([]listNode, cap)
-					s.len = 0
-				}
-				break
-			}
-			// push已经改了top,用下面的方法
-			continue
-		}
-		slot := s.getSlot(oldLen - 1)
-		if slot.load() == nil {
-			// push还没添加完成，但是修改了top=1
-			continue
-		}
-		if casUint32(&s.len, oldLen, 0) {
-			s.cap = uint32(cap)
-			s.data = make([]listNode, cap)
-			break
-		}
-	}
+	s.len = s.cap + 1
+	s.cap = 0
+	s.data = make([]listNode, cap)
+	s.len = 0
+	s.cap = uint32(cap)
+}
+
+func (q *LAStack) Cap() int {
+	return int(q.cap)
 }
 
 func (q *LAStack) Full() bool {
