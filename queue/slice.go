@@ -45,7 +45,7 @@ func (s *Slice) init() {
 	for i := 0; i < len(s.data); i++ {
 		if s.New == nil {
 			// use default lock-free queue
-			s.data[i] = &LLQueue{}
+			s.data[i] = &LRQueue{}
 		} else {
 			s.data[i] = s.New()
 		}

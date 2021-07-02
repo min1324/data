@@ -58,6 +58,12 @@ func NewLLQueue() Queue {
 	return &q
 }
 
+func NewLRQueue() Queue {
+	var q LRQueue
+	q.onceInit()
+	return &q
+}
+
 // 单锁数组队列
 func NewSAQueue() Queue {
 	var q SAQueue
