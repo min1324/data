@@ -27,7 +27,7 @@ func testStack(t *testing.T, test test) {
 		&queue.LLQueue{},
 		// &queue.LRQueue{},
 		// &queue.SAQueue{},
-		// &queue.SLQueue{},
+		&queue.SLQueue{},
 		// &queue.SRQueue{},
 		// &queue.Slice{},
 
@@ -303,9 +303,6 @@ func TestConcurrentEnQueueDeQueue(t *testing.T) {
 			}
 		},
 		perG: func(t *testing.T, s SQInterface) {
-			// EnQueue routine EnQueue total sumEnQueue item into it.
-			// DeQueue routine DeQueue until recive EnQueue's finish signal
-			// finally check if s.Size()+sumDeQueue == sumEnQueue
 			var DeQueueWG sync.WaitGroup
 			var EnQueueWG sync.WaitGroup
 

@@ -115,21 +115,22 @@ func (q *SRQueue) init() {
 }
 
 func (q *SRQueue) Init() {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	q.onceInit()
-
-	q.init()
-	// free queue [s ->...-> e]
+	q.InitWith()
 }
 
 // InitWith 初始化长度为cap的queue,
 // 如果未提供，则使用默认值: 1<<8
-func (q *SRQueue) InitWith(cap ...int) {
-	if len(cap) > 0 && cap[0] > 0 {
-		q.cap = uint32(cap[0])
+func (q *SRQueue) InitWith(caps ...int) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.onceInit()
+	if len(caps) > 0 && caps[0] > 0 {
+		q.cap = uint32(caps[0])
 	}
 	q.init()
+	for i := 0; i < cap(q.data); i++ {
+		q.data[i].free()
+	}
 }
 
 func (q *SRQueue) Full() bool {
@@ -146,7 +147,7 @@ func (q *SRQueue) Size() int {
 
 // 根据enID,deID获取进队，出队对应的slot
 func (q *SRQueue) getSlot(id uint32) *baseNode {
-	return &q.data[int(id&q.mod)]
+	return &q.data[id&q.mod]
 }
 
 func (q *SRQueue) EnQueue(i interface{}) bool {
@@ -156,7 +157,6 @@ func (q *SRQueue) EnQueue(i interface{}) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.onceInit()
-
 	if q.Full() {
 		return false
 	}
@@ -173,7 +173,6 @@ func (q *SRQueue) DeQueue() (val interface{}, ok bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.onceInit()
-
 	if q.Empty() {
 		return nil, false
 	}
@@ -232,20 +231,18 @@ func (q *DRQueue) init() {
 }
 
 func (q *DRQueue) Init() {
-	q.enMu.Lock()
-	defer q.enMu.Unlock()
-
-	q.deMu.Lock()
-	defer q.deMu.Unlock()
-	q.onceInit()
-
-	q.init()
-	// free queue [s ->...-> e]
+	q.InitWith()
 }
 
 // InitWith 初始化长度为cap的queue,
 // 如果未提供，则使用默认值: 1<<8
 func (q *DRQueue) InitWith(cap ...int) {
+	q.enMu.Lock()
+	defer q.enMu.Unlock()
+	q.deMu.Lock()
+	defer q.deMu.Unlock()
+	q.onceInit()
+
 	if len(cap) > 0 && cap[0] > 0 {
 		q.cap = uint32(cap[0])
 	}
@@ -277,13 +274,16 @@ func (q *DRQueue) EnQueue(i interface{}) bool {
 	defer q.enMu.Unlock()
 	q.onceInit()
 
+	if q.Full() {
+		return false
+	}
 	slot := q.getSlot(q.enID)
 	if slot.load() != nil {
 		// 队列满了
 		return false
 	}
-	atomic.AddUint32(&q.len, 1)
 	atomic.AddUint32(&q.enID, 1)
+	atomic.AddUint32(&q.len, 1)
 	if i == nil {
 		i = empty
 	}
@@ -298,10 +298,12 @@ func (q *DRQueue) DeQueue() (val interface{}, ok bool) {
 	q.deMu.Lock()
 	defer q.deMu.Unlock()
 	q.onceInit()
-
+	if q.Empty() {
+		return nil, false
+	}
 	slot := q.getSlot(q.deID)
 	if slot.load() == nil {
-		// 队列空了
+		// EnQueue正在写入
 		return nil, false
 	}
 	val = slot.load()

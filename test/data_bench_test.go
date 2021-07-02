@@ -58,14 +58,14 @@ func benchMap(b *testing.B, bench bench) {
 	for _, m := range [...]SQInterface{
 		// queue
 		// &UnsafeQueue{},
-		// &queue.DLQueue{},
-		// &queue.DRQueue{},
-		// &queue.LRQueue{},
+		&queue.DLQueue{},
+		&queue.DRQueue{},
+		&queue.LRQueue{},
 		&queue.LLQueue{},
-		// &queue.SAQueue{},
+		&queue.SAQueue{},
 		&queue.SLQueue{},
-		// &queue.SRQueue{},
-		// &queue.Slice{},
+		&queue.SRQueue{},
+		&queue.Slice{},
 
 		// // stack
 		// &MutexStack{},
@@ -455,8 +455,15 @@ func BenchmarkConcurrentRand(b *testing.B) {
 }
 
 func BenchmarkConcurrentMulRand(b *testing.B) {
-	const stackSize = 1 << 10
 	rand.Seed(time.Now().Unix())
+
+	const size = 1 << 10
+	const mod = size - 1
+	var random [size]int
+
+	for i := range random {
+		random[i] = rand.Intn(10) & 1
+	}
 
 	benchMap(b, bench{
 		setup: func(_ *testing.B, m SQInterface) {
@@ -476,18 +483,27 @@ func BenchmarkConcurrentMulRand(b *testing.B) {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
+					var j uint64
 					for {
 						select {
 						case <-exit:
 							return
 						default:
-							randCall(m)
+							if random[atomic.AddUint64(&j, 1)&mod] == 0 {
+								m.EnQueue(j)
+							} else {
+								m.DeQueue()
+							}
 						}
 					}
 				}()
 			}
 			for ; pb.Next(); i++ {
-				randCall(m)
+				if random[i&mod] == 0 {
+					m.EnQueue(i)
+				} else {
+					m.DeQueue()
+				}
 			}
 		},
 	})
