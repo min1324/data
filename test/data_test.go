@@ -1,6 +1,7 @@
 package data_test
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"sync"
@@ -216,6 +217,79 @@ func TestDeQueue(t *testing.T) {
 
 			if int64(s.Size())+dsum != sum {
 				t.Fatalf("TestDeQueue err,EnQueue:%d,DeQueue:%d,size:%d", sum, dsum, s.Size())
+			}
+		},
+	})
+}
+
+func TestConcurrentInit(t *testing.T) {
+	const maxGo = 4
+	var timeout = time.Second * 5
+
+	testStack(t, test{
+		setup: func(t *testing.T, s SQInterface) {
+			if _, ok := s.(*UnsafeQueue); ok {
+				t.Skip("UnsafeQueue can not test concurrent.")
+			}
+		},
+		perG: func(t *testing.T, s SQInterface) {
+			var wg sync.WaitGroup
+			ctx, cancle := context.WithTimeout(context.Background(), timeout)
+
+			for i := 0; i < maxGo; i++ {
+				wg.Add(1)
+				go func(ctx context.Context) {
+					defer wg.Done()
+					for {
+						select {
+						case <-ctx.Done():
+							return
+						default:
+							s.DeQueue()
+							time.Sleep(time.Millisecond)
+						}
+					}
+				}(ctx)
+				wg.Add(1)
+				go func(ctx context.Context) {
+					defer wg.Done()
+					for {
+						select {
+						case <-ctx.Done():
+							return
+						default:
+							s.EnQueue(1)
+						}
+					}
+				}(ctx)
+				wg.Add(1)
+				go func(ctx context.Context) {
+					defer wg.Done()
+					for {
+						select {
+						case <-ctx.Done():
+							return
+						default:
+							s.Init()
+							time.Sleep(time.Millisecond * 10)
+						}
+					}
+				}(ctx)
+			}
+			time.Sleep(5 * time.Second)
+			cancle()
+			wg.Wait()
+			size := s.Size()
+			sum := 0
+			for {
+				_, ok := s.DeQueue()
+				if !ok {
+					break
+				}
+				sum++
+			}
+			if size != sum {
+				t.Fatalf("Init Concurrent err,real:%d,size:%d,ret:%d", sum, size, s.Size())
 			}
 		},
 	})

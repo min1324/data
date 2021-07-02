@@ -60,7 +60,7 @@ func benchMap(b *testing.B, bench bench) {
 		// &UnsafeQueue{},
 		// &queue.DLQueue{},
 		// &queue.DRQueue{},
-		&queue.LRQueue{},
+		// &queue.LRQueue{},
 		&queue.LLQueue{},
 		&queue.LLQueueUnsafe{},
 		// &queue.SAQueue{},
@@ -95,7 +95,7 @@ func benchMap(b *testing.B, bench bench) {
 			var i int64
 			b.RunParallel(func(pb *testing.PB) {
 				id := int(atomic.AddInt64(&i, 1) - 1)
-				bench.perG(b, pb, (id*b.N)%queueMaxSize, m)
+				bench.perG(b, pb, (id * b.N), m)
 			})
 			// free
 			m.Init()
@@ -117,7 +117,7 @@ func BenchmarkEnQueue(b *testing.B) {
 }
 
 func BenchmarkDeQueue(b *testing.B) {
-	const prevsize = 1 << 24
+	const prevsize = 1 << 23
 	benchMap(b, bench{
 		setup: func(b *testing.B, m SQInterface) {
 			for i := 0; i < prevsize; i++ {

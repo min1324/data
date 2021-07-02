@@ -8,13 +8,6 @@ import (
 	"unsafe"
 )
 
-const (
-	geted_stat   uint32 = iota // geted_stat 状态时，已经取出，可以写入。这个状态必须0
-	setting_stat               // 只能由EnQUeue操作变成seted_stat, DeQueue操作遇到，说明队列已空.
-	seted_stat                 // seted_stat 状态时，已经写入,可以取出。
-	getting_stat               // 只能由DeQueue操作变成geted_stat，EnQUeue操作遇到，说明队列满了.
-)
-
 // node接口
 type node interface {
 	load() interface{}
