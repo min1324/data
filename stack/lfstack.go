@@ -124,7 +124,14 @@ func (s *LAStack) InitWith(cap ...int) {
 	for {
 		oldLen := atomic.LoadUint32(&s.len)
 		if oldLen == 0 {
-			break
+			// 这里有可能并发push,
+			if casUint32(&s.len, oldLen, s.cap) {
+				s.data = make([]listNode, s.cap)
+				s.len = 0
+				break
+			}
+			// push已经改了top,用下面的方法
+			continue
 		}
 		slot := s.getSlot(0)
 		if slot.load() == nil {
