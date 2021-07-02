@@ -1,7 +1,7 @@
 package stack
 
 /*
-// Queue接口
+// Stack接口
 type Stack interface {
 	Push(i interface{}) bool
 	Pop() (val interface{}, ok bool)

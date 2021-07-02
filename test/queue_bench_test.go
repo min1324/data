@@ -13,14 +13,14 @@ import (
 	"github.com/min1324/data/queue"
 )
 
-type maDeQueue string
+type mapQueue string
 
 const (
-	opEnQueue = maDeQueue("EnQueue")
-	opDeQueue = maDeQueue("DeQueue")
+	opEnQueue = mapQueue("EnQueue")
+	opDeQueue = mapQueue("DeQueue")
 )
 
-var maDeQueues = [...]maDeQueue{opEnQueue, opDeQueue}
+var mapQueues = [...]mapQueue{opEnQueue, opDeQueue}
 
 /*
 1<< 20~28
@@ -38,14 +38,14 @@ const queueMaxSize = 1 << 24    // queue max size
 const prevEnQueueSize = 1 << 20 // queue previous EnQueue
 
 func randCall(m QInterface) {
-	op := maDeQueues[rand.Intn(len(maDeQueues))]
+	op := mapQueues[rand.Intn(len(mapQueues))]
 	switch op {
 	case opEnQueue:
 		m.EnQueue(1)
 	case opDeQueue:
 		m.DeQueue()
 	default:
-		panic("invalid maDeQueue")
+		panic("invalid mapQueue")
 	}
 }
 
@@ -60,12 +60,12 @@ func benchMap(b *testing.B, bench bench) {
 		// &UnsafeQueue{},
 		&queue.DLQueue{},
 		&queue.DRQueue{},
-		// &queue.LRQueue{},
-		// &queue.LLQueue{},
+		&queue.LRQueue{},
+		&queue.LLQueue{},
 		&queue.SAQueue{},
 		&queue.SLQueue{},
 		&queue.SRQueue{},
-		// &queue.Slice{},
+		&queue.Slice{},
 
 		// // stack
 		// &MutexStack{},
