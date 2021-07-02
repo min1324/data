@@ -37,25 +37,12 @@ type XXQueue struct {
 
 type XXNode struct {
 	// 链表节点
-	// stat标志node是否可用
-	// geted_stat 状态时，已经取出，可以写入。EnQUeue操作通过cas改变为setting_stat,获得写入权限。
-	// seted_stat 状态时，已经写入，可以取出。DeQueue操作通过cas改变为getting_stat,获得取出权限。
-	// 额外状态。
-	state uint32
 	next  unsafe.Pointer
 	p     interface{}
 
 	// 额外可选
 	// prev unsafe.Pointer
 }
-
-// node状态
-const (
-	poped_stat   uintptr = iota // 只能由push操作cas改变成pushing_stat, pop操作遇到，说明队列已空.
-	pushing_stat                // 只能由push操作变成pushed_stat, pop操作遇到，说明队列已空.
-	pushed_stat                 // 只能由pop操作cas变成poping_stat，push操作遇到，说明队列满了.
-	poping_stat                 // 只能由pop操作变成poped_stat，push操作遇到，说明队列满了.
-)
 
 const (
 	DefauleSize = 1 << 10		// 默认数组队列大小
@@ -69,10 +56,15 @@ const (
 链表		q.head == q.tail				无
 环形		q.deID == q.enID		q.enID^q.cap == q.deID
 
-哨兵位：
-链表队列都有一个node哨兵位，head指向哨兵位，不存数据，或者是上次dequeue的node.
-出队操作，移动head到node下一个，然后释放node.返回head指向的新node值
-入队操作，tail.next记录新node,然后移动tail到新node.
+slot:储存或者取出value时的节点node。
+slot储存的val为空，则可以存入val，或者是DeQueue时为队列空。
+val不为空时，可以取出val，或者是EnQueue时队列满。
+
+链表队列：
+head指向第一个出队的node,如果node的val为空，则可能由EnQueue操作，但未完成。
+此时队列依旧认为空，直接返回。
+tail指向下一个EnQueue的位置slot，先加入一个nilNode在slot.next,移动tail=slot.next。
+然后在将value存入slot，完成加入操作。
 
 数组队列：
 deID指向下次出队的node,enID指向下次入队的node,先操作，后移动ID.
