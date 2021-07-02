@@ -58,14 +58,13 @@ func benchMap(b *testing.B, bench bench) {
 	for _, m := range [...]SQInterface{
 		// queue
 		// &UnsafeQueue{},
-		// &queue.DLQueue{},
-		// &queue.DRQueue{},
+		&queue.DLQueue{},
+		&queue.DRQueue{},
 		// &queue.LRQueue{},
-		&queue.LLQueue{},
-		&queue.LLQueueUnsafe{},
-		// &queue.SAQueue{},
-		// &queue.SLQueue{},
-		// &queue.SRQueue{},
+		// &queue.LLQueue{},
+		&queue.SAQueue{},
+		&queue.SLQueue{},
+		&queue.SRQueue{},
 		// &queue.Slice{},
 
 		// // stack
@@ -117,7 +116,8 @@ func BenchmarkEnQueue(b *testing.B) {
 }
 
 func BenchmarkDeQueue(b *testing.B) {
-	const prevsize = 1 << 23
+	// 由于预存的数量<出队数量，无法准确测试dequeue
+	const prevsize = 1 << 20
 	benchMap(b, bench{
 		setup: func(b *testing.B, m SQInterface) {
 			for i := 0; i < prevsize; i++ {

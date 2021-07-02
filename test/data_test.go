@@ -23,14 +23,13 @@ type testFunc func(*testing.T, SQInterface)
 func testStack(t *testing.T, test test) {
 	for _, m := range [...]SQInterface{
 		// &UnsafeQueue{},
-		// &queue.DLQueue{},
-		// &queue.DRQueue{},
-		&queue.LLQueue{},
-		&queue.LLQueueUnsafe{},
-		&queue.LRQueue{},
-		// &queue.SAQueue{},
-		// &queue.SLQueue{},
-		// &queue.SRQueue{},
+		&queue.DLQueue{},
+		&queue.DRQueue{},
+		// &queue.LLQueue{},
+		// &queue.LRQueue{},
+		&queue.SAQueue{},
+		&queue.SLQueue{},
+		&queue.SRQueue{},
 		// &queue.Slice{},
 
 		// &MutexStack{},
@@ -276,7 +275,7 @@ func TestConcurrentInit(t *testing.T) {
 					}
 				}(ctx)
 			}
-			time.Sleep(5 * time.Second)
+			time.Sleep(2 * time.Second)
 			cancle()
 			wg.Wait()
 			size := s.Size()
