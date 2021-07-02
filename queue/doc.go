@@ -1,12 +1,19 @@
 package queue
 
 /*
-// 接口
+// Queue接口
 type Queue interface {
-	Init()
-	Size() int
 	EnQueue(interface{}) bool
 	DeQueue() (val interface{}, ok bool)
+}
+
+type DataQueue interface {
+	Queue
+	onceInit()
+	Init()
+	Size() int
+	Full() bool
+	Empty() bool
 }
 
 type XXQueue struct {

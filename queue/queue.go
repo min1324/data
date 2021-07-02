@@ -7,8 +7,6 @@ import (
 
 // Queue interface of queue
 type Queue interface {
-	Init()
-	Size() int
 	EnQueue(interface{}) bool
 	DeQueue() (val interface{}, ok bool)
 }
@@ -16,6 +14,8 @@ type Queue interface {
 type DataQueue interface {
 	Queue
 	onceInit()
+	Init()
+	Size() int
 	Full() bool
 	Empty() bool
 }
