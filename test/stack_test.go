@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 	"unsafe"
-
-	"github.com/min1324/data/stack"
 )
 
 type stackStruct struct {
@@ -22,17 +20,13 @@ type stackFunc func(*testing.T, SInterface)
 
 func stackMap(t *testing.T, test stackStruct) {
 	for _, m := range [...]SInterface{
-		&stack.LAStack{},
-		&stack.LLStack{},
-		&stack.SAStack{},
-		&stack.SLStack{},
+		// &stack.LLStack{},
+		// &stack.SAStack{},
+		// &stack.SLStack{},
 	} {
 		t.Run(fmt.Sprintf("%T", m), func(t *testing.T) {
 			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(SInterface)
 			m.Init()
-			// if q, ok := m.(*queue.LRQueue); ok {
-			// 	q.InitWith(queueMaxSize)
-			// }
 
 			if test.setup != nil {
 				test.setup(t, m)
@@ -128,15 +122,19 @@ func TestStackInit(t *testing.T) {
 			// stack顺序反过来
 			s.Init()
 			array := [...]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
+			sum := 0
 			for i := range array {
-				s.Push(i)
-				//array[i] = i // queue用这种
-				array[len(array)-i-1] = i // stack用这种方式
+				if s.Push(i) {
+					//array[i] = i // queue用这种
+					array[sum] = sum // stack用这种方式
+					sum += 1
+				}
+
 			}
-			for i := 0; i < len(array); i++ {
+			for i := sum - 1; i >= 0; i-- {
 				v, ok := s.Pop()
 				if !ok || v != array[i] {
-					t.Fatalf("array want:%d, real:%v", array[i], v)
+					t.Fatalf("array want:%d, real:%v,size:%d,%v", array[i], v, sum, ok)
 				}
 			}
 
@@ -258,7 +256,7 @@ func TestConStackInit(t *testing.T) {
 					}
 				}(ctx)
 			}
-			time.Sleep(2 * time.Second)
+			time.Sleep(1 * time.Second)
 			cancle()
 			wg.Wait()
 			size := s.Size()

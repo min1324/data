@@ -34,10 +34,10 @@ func New() Stack {
 	return &LLStack{}
 }
 
-// lock-free 数组栈
-func NewLAStack() Stack {
-	return &LAStack{}
-}
+// // lock-free 数组栈
+// func NewLAStack() Stack {
+// 	return &LAStack{}
+// }
 
 // lock-free 链表栈
 func NewLLStack() Stack {

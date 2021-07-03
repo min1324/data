@@ -57,7 +57,6 @@ type benchS struct {
 func benchSMap(b *testing.B, benchS benchS) {
 	for _, m := range [...]SInterface{
 		// // stack
-		&stack.LAStack{},
 		// &stack.LLStack{},
 		// &stack.SAStack{},
 		// &stack.SLStack{},
@@ -65,13 +64,10 @@ func benchSMap(b *testing.B, benchS benchS) {
 		b.Run(fmt.Sprintf("%T", m), func(b *testing.B) {
 			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(SInterface)
 			m.Init()
-			if q, ok := m.(*stack.LAStack); ok {
-				q.InitWith(stackMaxSize)
-			}
+
 			if q, ok := m.(*stack.SAStack); ok {
 				q.InitWith(stackMaxSize)
 			}
-			// setup
 			if benchS.setup != nil {
 				benchS.setup(b, m)
 			}
@@ -82,9 +78,10 @@ func benchSMap(b *testing.B, benchS benchS) {
 			b.RunParallel(func(pb *testing.PB) {
 				id := int(atomic.AddInt64(&i, 1) - 1)
 				benchS.perG(b, pb, (id * b.N), m)
+				m.Init()
 			})
 			// free
-			m.Init()
+
 		})
 	}
 }
@@ -168,15 +165,16 @@ func BenchmarkStackBalance(b *testing.B) {
 
 	benchSMap(b, benchS{
 		setup: func(_ *testing.B, m SInterface) {
-			for i := 0; i < prevPushSize; i++ {
-				m.Push(i)
-			}
 		},
 
 		perG: func(b *testing.B, pb *testing.PB, i int, m SInterface) {
 			for ; pb.Next(); i++ {
-				m.Push(i)
+				m.Push(1)
 				m.Pop()
+				// b.Log("Push:", m.Size(), m.Push(i+10), m.Size(), i)
+				// size := m.Size()
+				// v, ok := m.Pop()
+				// b.Logf("pop:%d,%v,%v,%d,%d", size, v, ok, m.Size(), i)
 			}
 		},
 	})
@@ -186,17 +184,19 @@ func BenchmarkStackCollision(b *testing.B) {
 
 	benchSMap(b, benchS{
 		setup: func(_ *testing.B, m SInterface) {
-			for i := 0; i < prevPushSize; i++ {
-				m.Push(i)
-			}
+			m.Push(1)
 		},
 
 		perG: func(b *testing.B, pb *testing.PB, i int, m SInterface) {
 			for ; pb.Next(); i++ {
 				if i&1 == 0 {
-					m.Push(i)
-				} else {
+					// b.Log("Push:", m.Size(), m.Push(i), m.Size(), i)
 					m.Pop()
+				} else {
+					m.Push(1)
+					// size := m.Size()
+					// v, ok := m.Pop()
+					// b.Logf("pop:%d,%v,%v,%d,%d", size, v, ok, m.Size(), i)
 				}
 			}
 		},

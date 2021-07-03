@@ -1,7 +1,6 @@
 package stack
 
 import (
-	"sync"
 	"sync/atomic"
 	"unsafe"
 )
@@ -85,115 +84,146 @@ func (s *LLStack) Pop() (val interface{}, ok bool) {
 	return val, true
 }
 
-// LAStack a lock-free concurrent FILO array stack.
-type LAStack struct {
-	once sync.Once
-	len  uint32
-	cap  uint32
-	data []listNode
-}
+// // LAStack a lock-free concurrent FILO array stack.
+// type LAStack struct {
+// 	once  sync.Once
+// 	len   uint32
+// 	cap   uint32
+// 	state uint32
+// 	data  []stateNode
+// }
 
-// 一次性初始化
-func (q *LAStack) onceInit() {
-	q.once.Do(func() {
-		q.init()
-	})
-}
+// // 一次性初始化
+// func (q *LAStack) onceInit() {
+// 	q.once.Do(func() {
+// 		q.init()
+// 	})
+// }
 
-// 无并发初始化
-func (s *LAStack) init() {
-	if s.cap < 1 {
-		s.cap = DefauleSize
-	}
-	s.len = 0
-	s.data = make([]listNode, s.cap)
-}
+// // 无并发初始化
+// func (s *LAStack) init() {
+// 	var cap = s.cap
+// 	if cap < 1 {
+// 		cap = DefauleSize
+// 	}
+// 	s.data = make([]stateNode, cap)
+// 	s.len = 0
+// 	s.cap = cap
+// }
 
-// Init初始化长度为: DefauleSize.
-func (s *LAStack) Init() {
-	s.InitWith()
-}
+// // Init初始化长度为: DefauleSize.
+// func (s *LAStack) Init() {
+// 	s.InitWith()
+// }
 
-// InitWith初始化长度为cap的queue,
-// 如果未提供，则使用默认值: DefauleSize.
-func (s *LAStack) InitWith(caps ...int) {
-	var cap = DefauleSize
-	if len(caps) > 0 && caps[0] > 0 {
-		cap = caps[0]
-	}
-	s.onceInit()
-	s.len = s.cap + 1
-	s.cap = 0
-	s.data = make([]listNode, cap)
-	s.len = 0
-	s.cap = uint32(cap)
-}
+// // InitWith初始化长度为cap的queue,
+// // 如果未提供，则使用默认值: DefauleSize.
+// func (s *LAStack) InitWith(caps ...int) {
+// 	s.onceInit()
+// 	// if s.cap < 1 {
+// 	// 	// 第一次初始化，cap为0.
+// 	// 	s.cap = DefauleSize
+// 	// }
+// 	var newCap = atomic.LoadUint32(&s.cap)
+// 	// if len(caps) > 0 && caps[0] > 0 {
+// 	// 	newCap = uint32(caps[0])
+// 	// }
+// 	// s.cap==0,让新的Push,Pop无法执行。
+// 	for {
+// 		oldCap := atomic.LoadUint32(&s.cap)
+// 		if oldCap == 0 {
+// 			// other InitWith running,wait until it finished.
+// 			continue
+// 		}
+// 		if casUint32(&s.cap, oldCap, 0) {
+// 			// 获得了初始化权限
+// 			break
+// 		}
+// 	}
+// 	// top == 0，让执行中的Push,Pop结束执行.
+// 	for {
+// 		top := atomic.LoadUint32(&s.len)
+// 		if top == 0 {
+// 			break
+// 		}
+// 		slot := s.getSlot(top - 1)
+// 		if casUint32(&slot.state, 0, 1) {
+// 			atomic.StoreUint32(&s.len, 0)
+// 			slot.change(0)
+// 			break
+// 		}
+// 	}
+// 	// 初始化
+// 	s.data = make([]stateNode, newCap)
+// 	s.len = 0
+// 	s.cap = newCap
+// }
 
-func (q *LAStack) Cap() int {
-	return int(q.cap)
-}
+// func (s *LAStack) getSlot(id uint32) *stateNode {
+// 	return &s.data[id]
+// }
 
-func (q *LAStack) Full() bool {
-	return q.len == q.cap
-}
+// // Push puts the given value at the top of the stack.
+// func (s *LAStack) Push(val interface{}) bool {
+// 	s.onceInit()
+// 	if val == nil {
+// 		val = empty
+// 	}
+// 	for {
+// 		top := atomic.LoadUint32(&s.len)
+// 		if top >= s.cap {
+// 			return false
+// 		}
+// 		slot := s.getSlot(top)
+// 		if casUint32(&slot.state, 0, 1) {
+// 			slot.store(val)
+// 			atomic.AddUint32(&s.len, 1)
+// 			slot.change(0)
+// 			break
+// 		}
+// 	}
+// 	return true
+// }
 
-func (q *LAStack) Empty() bool {
-	return q.len == 0
-}
+// // Pop removes and returns the value at the top of the stack.
+// // It returns nil if the stack is empty.
+// func (s *LAStack) Pop() (val interface{}, ok bool) {
+// 	s.onceInit()
+// 	var slot *stateNode
+// 	for {
+// 		top := atomic.LoadUint32(&s.len)
+// 		if top == 0 {
+// 			// top > s.cap withInit时缩短stack,肯能出现情况
+// 			return
+// 		}
+// 		slot = s.getSlot(top - 1)
+// 		if casUint32(&slot.state, 0, 1) {
+// 			val = slot.load()
+// 			slot.free()
+// 			atomic.AddUint32(&s.len, ^uint32(0))
+// 			slot.change(0)
+// 			break
+// 		}
+// 	}
+// 	if val == empty {
+// 		val = nil
+// 	}
+// 	return val, true
+// }
 
-// Size stack element's number
-func (s *LAStack) Size() int {
-	return int(s.len)
-}
+// func (q *LAStack) Cap() int {
+// 	return int(q.cap)
+// }
 
-func (s *LAStack) getSlot(id uint32) node {
-	return &s.data[id]
-}
+// func (q *LAStack) Full() bool {
+// 	return q.len == q.cap
+// }
 
-// Push puts the given value at the top of the stack.
-func (s *LAStack) Push(val interface{}) bool {
-	if val == nil {
-		val = empty
-	}
-	for {
-		top := atomic.LoadUint32(&s.len)
-		if top >= s.cap {
-			return false
-		}
-		slot := s.getSlot(top)
-		if slot.load() != nil {
-			continue
-		}
-		if casUint32(&s.len, top, top+1) {
-			slot.store(val)
-			break
-		}
-	}
-	return true
-}
+// func (q *LAStack) Empty() bool {
+// 	return q.len == 0
+// }
 
-// Pop removes and returns the value at the top of the stack.
-// It returns nil if the stack is empty.
-func (s *LAStack) Pop() (val interface{}, ok bool) {
-	var slot node
-	for {
-		top := atomic.LoadUint32(&s.len)
-		if top == 0 || top > s.cap {
-			// top > s.cap withInit时缩短stack,肯能出现情况
-			return
-		}
-		slot = s.getSlot(top - 1)
-		val = slot.load()
-		if val == nil {
-			return
-		}
-		if casUint32(&s.len, top, top-1) {
-			break
-		}
-	}
-	if val == empty {
-		val = nil
-	}
-	slot.free()
-	return val, true
-}
+// // Size stack element's number
+// func (s *LAStack) Size() int {
+// 	return int(s.len)
+// }
