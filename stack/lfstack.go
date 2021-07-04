@@ -191,35 +191,39 @@ func (s *LAStack) getSlot(id uint32) *baseNode {
 // Push puts the given value at the top of the stack.
 func (s *LAStack) Push(val interface{}) bool {
 	s.onceInit()
+	if s.Full() {
+		return false
+	}
 	if val == nil {
 		val = empty
 	}
+	// 先增加写状态数量
 	for {
 		state := atomic.LoadUint32(&s.state)
-		// TODO
 		read, write := s.unpack(state)
 		if read > 0 {
-			// 有写线程，等待。
+			// 有读线程，等待。
 			continue
 		}
 		if write == stackMark {
-			// 读线程已经达到 1<<bit-1了，无法再添加。
+			// 写线程已经达到 1<<bit-1了，无法再添加。
 			continue
 		}
 		state2 := s.pack(0, write+1)
 		if casUint32(&s.state, state, state2) {
-			// 成功添加1个读线程
+			// 成功添加1个写线程
 			break
 		}
 	}
 	// 写线程已增加1，最后需要减少1
 	defer atomic.AddUint32(&s.state, negativeOne)
 
+	// 再获取slot
 	var slot *baseNode
 	for {
 		top := atomic.LoadUint32(&s.len)
 		if top >= s.cap {
-			// top > s.cap withInit时缩短stack,肯能出现情况
+			// withInit时缩短stack,肯能出现情况：top > s.cap，
 			return false
 		}
 		slot = s.getSlot(top)
@@ -235,9 +239,12 @@ func (s *LAStack) Push(val interface{}) bool {
 // It returns nil if the stack is empty.
 func (s *LAStack) Pop() (val interface{}, ok bool) {
 	s.onceInit()
+	if s.Empty() {
+		return
+	}
+	// 先增加读状态数量
 	for {
 		state := atomic.LoadUint32(&s.state)
-		// TODO
 		read, write := s.unpack(state)
 		if write > 0 {
 			// 有写线程，等待。
@@ -256,11 +263,12 @@ func (s *LAStack) Pop() (val interface{}, ok bool) {
 	// 读线程已增加1，最后需要减少1
 	defer atomic.AddUint32(&s.state, ^uint32(stackMark))
 
+	// 再获取slot
 	var slot *baseNode
 	for {
 		top := atomic.LoadUint32(&s.len)
 		if top == 0 || top > s.cap {
-			// top > s.cap withInit时缩短stack,肯能出现情况
+			// withInit时缩短stack,肯能出现情况：top > s.cap，
 			return
 		}
 		slot = s.getSlot(top - 1)
