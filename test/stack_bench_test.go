@@ -60,11 +60,14 @@ func benchSMap(b *testing.B, benchS benchS) {
 		// &stack.LLStack{},
 		// &stack.SAStack{},
 		// &stack.SLStack{},
+		&stack.LAStack{},
 	} {
 		b.Run(fmt.Sprintf("%T", m), func(b *testing.B) {
 			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(SInterface)
 			m.Init()
-
+			if q, ok := m.(*stack.LAStack); ok {
+				q.InitWith(stackMaxSize)
+			}
 			if q, ok := m.(*stack.SAStack); ok {
 				q.InitWith(stackMaxSize)
 			}
@@ -204,7 +207,7 @@ func BenchmarkStackCollision(b *testing.B) {
 }
 
 func BenchmarkStackInterlace(b *testing.B) {
-
+	const mark = 1<<2 - 1
 	benchSMap(b, benchS{
 		setup: func(_ *testing.B, m SInterface) {
 			for i := 0; i < prevPushSize; i++ {
@@ -215,7 +218,7 @@ func BenchmarkStackInterlace(b *testing.B) {
 		perG: func(b *testing.B, pb *testing.PB, i int, m SInterface) {
 			j := 0
 			for ; pb.Next(); i++ {
-				j += (i & 1)
+				j += (i & mark)
 				if j&1 == 0 {
 					m.Push(i)
 				} else {
