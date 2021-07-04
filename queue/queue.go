@@ -25,10 +25,15 @@ const (
 	negativeOne = ^uint32(0) // -1
 )
 
-type queueNil *struct{}
+// queueNil is used in queue to represent interface{}(nil).
+// Since we use nil to represent empty slots, we need a sentinel value
+// to represent nil.
+//
+// 包装空值
+// type queueNil *struct{}
 
 // 用一个包装nil值。
-var empty = queueNil(nil)
+var empty = unsafe.Pointer(new(interface{}))
 
 // New return an empty lock-free unbound list Queue
 func New() Queue {
