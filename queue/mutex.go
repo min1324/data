@@ -49,23 +49,23 @@ func (q *SAQueue) Size() int {
 }
 
 func (q *SAQueue) EnQueue(i interface{}) bool {
+	q.onceInit()
 	if q.Full() {
 		return false
 	}
 	q.mu.Lock()
-	q.onceInit()
 	q.data = append(q.data, i)
 	q.mu.Unlock()
 	return true
 }
 
 func (q *SAQueue) DeQueue() (val interface{}, ok bool) {
+	q.onceInit()
 	if q.Empty() {
 		return
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	q.onceInit()
 	if q.Empty() {
 		return
 	}
@@ -122,9 +122,9 @@ func (q *SRQueue) Init() {
 // InitWith 初始化长度为cap的queue,
 // 如果未提供，则使用默认值: DefaultSize
 func (q *SRQueue) InitWith(caps ...int) {
+	q.onceInit()
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	q.onceInit()
 	if len(caps) > 0 && caps[0] > 0 {
 		q.cap = uint32(caps[0])
 	}
@@ -156,10 +156,10 @@ func (q *SRQueue) getSlot(id uint32) node {
 }
 
 func (q *SRQueue) EnQueue(val interface{}) bool {
+	q.mu.Lock()
 	if q.Full() {
 		return false
 	}
-	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.onceInit()
 	if q.Full() {
@@ -172,12 +172,12 @@ func (q *SRQueue) EnQueue(val interface{}) bool {
 }
 
 func (q *SRQueue) DeQueue() (val interface{}, ok bool) {
+	q.onceInit()
 	if q.Empty() {
 		return nil, false
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	q.onceInit()
 	if q.Empty() {
 		return nil, false
 	}
@@ -242,11 +242,11 @@ func (q *DRQueue) Init() {
 // InitWith 初始化长度为cap的queue,
 // 如果未提供，则使用默认值: DefaultSize
 func (q *DRQueue) InitWith(cap ...int) {
+	q.onceInit()
 	q.enMu.Lock()
 	defer q.enMu.Unlock()
 	q.deMu.Lock()
 	defer q.deMu.Unlock()
-	q.onceInit()
 
 	if len(cap) > 0 && cap[0] > 0 {
 		q.cap = uint32(cap[0])
@@ -276,12 +276,12 @@ func (q *DRQueue) getSlot(id uint32) node {
 }
 
 func (q *DRQueue) EnQueue(val interface{}) bool {
+	q.onceInit()
 	if q.Full() {
 		return false
 	}
 	q.enMu.Lock()
 	defer q.enMu.Unlock()
-	q.onceInit()
 
 	if q.Full() {
 		return false
@@ -301,12 +301,13 @@ func (q *DRQueue) EnQueue(val interface{}) bool {
 }
 
 func (q *DRQueue) DeQueue() (val interface{}, ok bool) {
+	q.onceInit()
 	if q.Empty() {
 		return nil, false
 	}
 	q.deMu.Lock()
 	defer q.deMu.Unlock()
-	q.onceInit()
+
 	if q.Empty() {
 		return nil, false
 	}
@@ -350,9 +351,9 @@ func (q *SLQueue) init() {
 }
 
 func (q *SLQueue) Init() {
+	q.onceInit()
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	q.onceInit()
 
 	head := q.head
 	tail := q.tail
@@ -386,9 +387,10 @@ func (q *SLQueue) Size() int {
 }
 
 func (q *SLQueue) EnQueue(val interface{}) bool {
+	q.onceInit()
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	q.onceInit()
+
 	if val == nil {
 		val = empty
 	}
@@ -409,12 +411,13 @@ func (q *SLQueue) EnQueue(val interface{}) bool {
 }
 
 func (q *SLQueue) DeQueue() (val interface{}, ok bool) {
+	q.onceInit()
 	if q.Empty() {
 		return
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	q.onceInit()
+
 	if q.Empty() {
 		return
 	}
@@ -467,11 +470,11 @@ func (q *DLQueue) init() {
 }
 
 func (q *DLQueue) Init() {
+	q.onceInit()
 	q.enMu.Lock()
 	defer q.enMu.Unlock()
 	q.deMu.Lock()
 	defer q.deMu.Unlock()
-	q.onceInit()
 
 	head := q.head
 	tail := q.tail
@@ -505,9 +508,9 @@ func (q *DLQueue) Size() int {
 }
 
 func (q *DLQueue) EnQueue(val interface{}) bool {
+	q.onceInit()
 	q.enMu.Lock()
 	defer q.enMu.Unlock()
-	q.onceInit()
 	if val == nil {
 		val = empty
 	}
@@ -522,12 +525,13 @@ func (q *DLQueue) EnQueue(val interface{}) bool {
 }
 
 func (q *DLQueue) DeQueue() (val interface{}, ok bool) {
+	q.onceInit()
 	if q.Empty() {
 		return
 	}
 	q.deMu.Lock()
 	defer q.deMu.Unlock()
-	q.onceInit()
+
 	if q.Empty() {
 		return
 	}

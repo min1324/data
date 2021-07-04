@@ -112,10 +112,10 @@ func (q *LLQueue) EnQueue(val interface{}) bool {
 }
 
 func (q *LLQueue) DeQueue() (val interface{}, ok bool) {
+	q.onceInit()
 	if q.Empty() {
 		return
 	}
-	q.onceInit()
 	var slot *ptrNode
 	// 获取slot
 	for {
@@ -270,10 +270,10 @@ func (q *LRQueue) getSlot(id uint32) node {
 }
 
 func (q *LRQueue) EnQueue(val interface{}) bool {
+	q.onceInit()
 	if q.Full() {
 		return false
 	}
-	q.onceInit()
 	if val == nil {
 		val = empty
 	}
@@ -298,10 +298,10 @@ func (q *LRQueue) EnQueue(val interface{}) bool {
 }
 
 func (q *LRQueue) DeQueue() (val interface{}, ok bool) {
+	q.onceInit()
 	if q.Empty() {
 		return
 	}
-	q.onceInit()
 	for {
 		// 获取最新 DeQueuePID,
 		deID := atomic.LoadUint32(&q.deID)
