@@ -43,22 +43,31 @@ func (s *Slice) onceInit() {
 
 func (s *Slice) init() {
 	if s.cap < 1 {
-		s.cap = mod + 1
+		s.cap = DefauleSize
 	}
-	s.deID = s.enID
-	s.mod = modUint32(s.cap)
-	s.cap = s.mod + 1
-	s.len = 0
-	s.data = make([]DataQueue, s.cap)
+	newCap := atomic.LoadUint32(&s.cap)
+	newMod := modUint32(newCap)
+	newCap = newMod + 1
+	data := make([]DataQueue, s.cap)
 	for i := 0; i < int(s.cap); i++ {
 		if s.New == nil {
 			// use default lock-free queue
-			s.data[i] = &LRQueue{}
+			data[i] = &LRQueue{}
 		} else {
-			s.data[i] = s.New()
+			data[i] = s.New()
 		}
-		s.data[i].Init()
+		data[i].Init()
 	}
+	s.deID = s.enID
+	if s.cap > newCap {
+		s.mod = newMod
+		s.data = data
+	} else {
+		s.data = data
+		s.mod = newMod
+	}
+	s.len = 0
+	s.cap = newCap
 }
 
 // Init prevent push new element into queue
@@ -91,6 +100,10 @@ func (q *Slice) Full() bool {
 
 func (q *Slice) Empty() bool {
 	return q.len == 0
+}
+
+func (s *Slice) Cap() int {
+	return int(atomic.LoadUint32(&s.cap))
 }
 
 func (s *Slice) Size() int {
