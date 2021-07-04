@@ -49,6 +49,10 @@ func (q *SAStack) InitWith(caps ...int) {
 	}
 }
 
+func (q *SAStack) Cap() int {
+	return int(q.cap)
+}
+
 func (q *SAStack) Full() bool {
 	return q.len == q.cap
 }

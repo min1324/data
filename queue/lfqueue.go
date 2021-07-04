@@ -42,10 +42,6 @@ type LLQueue struct {
 	tail unsafe.Pointer
 }
 
-func (q *LLQueue) Size() int {
-	return int(atomic.LoadUint32(&q.len))
-}
-
 // 一次性初始化,线程安全。
 func (q *LLQueue) onceInit() {
 	q.once.Do(func() {
@@ -162,12 +158,20 @@ func (q *LLQueue) DeQueue() (val interface{}, ok bool) {
 	return val, true
 }
 
+func (q *LLQueue) Cap() int {
+	return queueLimit
+}
+
 func (q *LLQueue) Full() bool {
 	return false
 }
 
 func (q *LLQueue) Empty() bool {
 	return q.head == q.tail
+}
+
+func (q *LLQueue) Size() int {
+	return int(atomic.LoadUint32(&q.len))
 }
 
 // lock-free queue implement with array

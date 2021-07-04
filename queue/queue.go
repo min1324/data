@@ -15,6 +15,7 @@ type DataQueue interface {
 	Queue
 	onceInit()
 	Init()
+	Cap() int
 	Size() int
 	Full() bool
 	Empty() bool

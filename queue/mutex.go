@@ -32,6 +32,10 @@ func (q *SAQueue) Init() {
 	q.init()
 }
 
+func (q *SAQueue) Cap() int {
+	return queueLimit
+}
+
 func (q *SAQueue) Full() bool {
 	return false
 }
@@ -128,6 +132,10 @@ func (q *SRQueue) InitWith(caps ...int) {
 	for i := 0; i < cap(q.data); i++ {
 		q.data[i].free()
 	}
+}
+
+func (q *SRQueue) Cap() int {
+	return int(q.cap)
 }
 
 func (q *SRQueue) Full() bool {
@@ -246,6 +254,10 @@ func (q *DRQueue) InitWith(cap ...int) {
 	q.init()
 }
 
+func (q *DRQueue) Cap() int {
+	return int(q.cap)
+}
+
 func (q *DRQueue) Full() bool {
 	return q.enID^q.cap == q.deID
 }
@@ -355,6 +367,10 @@ func (q *SLQueue) Init() {
 		freeNode.free()
 	}
 	return
+}
+
+func (q *SLQueue) Cap() int {
+	return queueLimit
 }
 
 func (q *SLQueue) Full() bool {
@@ -470,6 +486,10 @@ func (q *DLQueue) Init() {
 		freeNode.free()
 	}
 	return
+}
+
+func (q *DLQueue) Cap() int {
+	return queueLimit
 }
 
 func (q *DLQueue) Full() bool {

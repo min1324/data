@@ -33,6 +33,10 @@ func (s *LLStack) Init() {
 	}
 }
 
+func (q *LLStack) Cap() int {
+	return stackLimit
+}
+
 func (q *LLStack) Full() bool {
 	return false
 }
@@ -100,7 +104,7 @@ type LAStack struct {
 
 const stackBits = 16
 const stackMark = (1 << stackBits) - 1
-const stackLimit = (1 << stackBits) / 4
+const stackLimit = (1 << 32) / 4
 
 func (s LAStack) unpack(ptrs uint32) (read, write uint16) {
 	read = uint16((ptrs >> stackBits) & stackMark)
