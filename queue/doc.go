@@ -61,7 +61,7 @@ const (
 数组			len == 0				len == cap
 切片			len == 0					无
 链表		q.head == q.tail				无
-环形		q.deID == q.enID		q.enID^q.cap == q.deID
+环形		q.deID == q.enID		q.enID-q.deID == q.cap
 
 slot:储存或者取出value时的节点node。
 slot储存的val为空，则可以存入val，或者是DeQueue时为队列空。
