@@ -154,7 +154,16 @@ func (q *LLQueue) DeQueue() (val interface{}, ok bool) {
 	atomic.AddUint32(&q.len, negativeOne)
 
 	// 释放slot
-	slot.free()
+	// BUG memory reclamation
+	//
+	// 队列假设有node1->node2->node3
+	// 进程1：队头head=node1.准备cas(&q.head, head, slot.next)
+	// 进程2：刚好pop完node1,2,3，并且释放，队列空了。
+	// 然后进程3：刚好new(node1，node3,node2),push(node1,node3,node2)进队，
+	// 此时队列有node1->node3,node2
+	// 回到进程1进行cas，head还是指向node1,成功，但是next并不是预期的node2。
+	//
+	// slot.free()
 	return val, true
 }
 
