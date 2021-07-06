@@ -23,9 +23,9 @@ type stackFunc func(*testing.T, SInterface)
 func stackMap(t *testing.T, test stackStruct) {
 	for _, m := range [...]SInterface{
 		&stack.LAStack{},
-		// &stack.LLStack{},
-		// &stack.SAStack{},
-		// &stack.SLStack{},
+		&stack.LLStack{},
+		&stack.SAStack{},
+		&stack.SLStack{},
 	} {
 		t.Run(fmt.Sprintf("%T", m), func(t *testing.T) {
 			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(SInterface)

@@ -23,21 +23,23 @@ type queueFunc func(*testing.T, QInterface)
 func queueMap(t *testing.T, test queueStruct) {
 	for _, m := range [...]QInterface{
 		// &UnsafeQueue{},
-		&queue.DLQueue{},
-		&queue.DRQueue{},
+		// &queue.DLQueue{},
+		// &queue.DRQueue{},
 		// &queue.LLQueue{},
-		// &queue.LRQueue{},
-		&queue.SAQueue{},
-		&queue.SLQueue{},
-		&queue.SRQueue{},
+		&queue.LRQueue{},
+		// &queue.SAQueue{},
+		// &queue.SLQueue{},
+		// &queue.SRQueue{},
 		// &queue.Slice{},
+		// &queue.Chain{},
+		// &queue.LKQueue{},
 	} {
 		t.Run(fmt.Sprintf("%T", m), func(t *testing.T) {
 			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(QInterface)
 			m.Init()
-			if q, ok := m.(*queue.LRQueue); ok {
-				q.InitWith(queueMaxSize)
-			}
+			// if q, ok := m.(*queue.LRQueue); ok {
+			// 	q.InitWith(queueMaxSize)
+			// }
 			if q, ok := m.(*queue.DRQueue); ok {
 				q.InitWith(queueMaxSize)
 			}
@@ -303,28 +305,38 @@ func TestConcurrentEnQueue(t *testing.T) {
 		},
 		perG: func(t *testing.T, s QInterface) {
 			var wg sync.WaitGroup
-			var esum int64
+			var EnQueueSum int64
 			for i := 0; i < maxGo; i++ {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
 					for i := 0; i < maxNum; i++ {
 						if s.EnQueue(i) {
-							atomic.AddInt64(&esum, 1)
+							atomic.AddInt64(&EnQueueSum, 1)
 						}
 					}
 				}()
 			}
 			wg.Wait()
-			if int64(s.Size()) != esum {
-				t.Fatalf("TestConcurrentEnQueue err,EnQueue:%d,real:%d", esum, s.Size())
+			var ret int64
+			size := s.Size()
+			for {
+				_, ok := s.DeQueue()
+				if !ok {
+					break
+				}
+				ret += 1
+			}
+			if ret != int64(EnQueueSum) {
+				t.Fatalf("TestConcurrentEnQueue err,EnQueue:%d,ret:%d,size:%d",
+					EnQueueSum, ret, size)
 			}
 		},
 	})
 }
 
 func TestConcurrentDeQueue(t *testing.T) {
-	const maxGo, maxNum = 4, 1 << 20
+	const maxGo, maxNum = 64, 1 << 20
 	const maxSize = maxGo * maxNum
 
 	queueMap(t, queueStruct{
@@ -335,7 +347,7 @@ func TestConcurrentDeQueue(t *testing.T) {
 		},
 		perG: func(t *testing.T, s QInterface) {
 			var wg sync.WaitGroup
-			var sum int64
+			var DeQueueSum int64
 			var EnQueueSum int64
 			for i := 0; i < maxSize; i++ {
 				if s.EnQueue(i) {
@@ -350,22 +362,31 @@ func TestConcurrentDeQueue(t *testing.T) {
 					for s.Size() > 0 {
 						_, ok := s.DeQueue()
 						if ok {
-							atomic.AddInt64(&sum, 1)
+							atomic.AddInt64(&DeQueueSum, 1)
 						}
 					}
 				}()
 			}
 			wg.Wait()
-
-			if sum+int64(s.Size()) != int64(EnQueueSum) {
-				t.Fatalf("TestConcurrentEnQueue err,EnQueue:%d,DeQueue:%d,size:%d", EnQueueSum, sum, s.Size())
+			var ret int64
+			size := s.Size()
+			for {
+				_, ok := s.DeQueue()
+				if !ok {
+					break
+				}
+				ret += 1
+			}
+			if DeQueueSum+ret != int64(EnQueueSum) {
+				t.Fatalf("TestConcurrentEnQueue err,EnQueue:%d,DeQueue:%d,ret:%d,sum:%d,size:%d",
+					EnQueueSum, DeQueueSum, ret, ret+DeQueueSum, size)
 			}
 		},
 	})
 }
 
 func TestConcurrentEnQueueDeQueue(t *testing.T) {
-	const maxGo, maxNum = 4, 1 << 10
+	const maxGo, maxNum = 8, 1 << 20
 	const maxSize = maxGo * maxNum
 
 	queueMap(t, queueStruct{
@@ -399,8 +420,11 @@ func TestConcurrentEnQueueDeQueue(t *testing.T) {
 						case <-exit:
 							return
 						default:
-							_, ok := s.DeQueue()
+							v, ok := s.DeQueue()
 							if ok {
+								if v == nil {
+									t.Fatal("err:v nil")
+								}
 								atomic.AddInt64(&sumDeQueue, 1)
 							}
 						}
@@ -411,9 +435,18 @@ func TestConcurrentEnQueueDeQueue(t *testing.T) {
 			close(exit)
 			DeQueueWG.Wait()
 			exit = nil
-
-			if sumDeQueue+int64(s.Size()) != sumEnQueue {
-				t.Fatalf("TestConcurrentEnQueueDeQueue err,EnQueue:%d,DeQueue:%d,instack:%d", sumEnQueue, sumDeQueue, s.Size())
+			var ret int64
+			size := s.Size()
+			for {
+				_, ok := s.DeQueue()
+				if !ok {
+					break
+				}
+				ret += 1
+			}
+			if sumDeQueue+ret != sumEnQueue {
+				t.Fatalf("TestConcurrentEnQueueDeQueue err,EnQueue:%d,DeQueue:%d,sub:%d,ret:%d,sum:%d,size:%d",
+					sumEnQueue, sumDeQueue, sumEnQueue-sumDeQueue, ret, sumDeQueue+ret, size)
 			}
 		},
 	})

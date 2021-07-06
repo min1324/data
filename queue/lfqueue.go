@@ -328,6 +328,7 @@ func (q *LRQueue) DeQueue() (val interface{}, ok bool) {
 			if val == empty {
 				val = nil
 			}
+			slot.free()
 			break
 		}
 	}

@@ -34,7 +34,7 @@ var mapStacks = [...]mapStack{opPush, opPop}
 134217728	27
 268435456	28
 */
-const stackMaxSize = 1 << 24 // queue max size
+const stackMaxSize = 1 << 22 // queue max size
 const prevPushSize = 1 << 20 // queue previous Push
 
 func randStackCall(m SInterface) {
@@ -57,9 +57,9 @@ type benchS struct {
 func benchSMap(b *testing.B, benchS benchS) {
 	for _, m := range [...]SInterface{
 		// // stack
-		// &stack.LLStack{},
-		// &stack.SAStack{},
-		// &stack.SLStack{},
+		&stack.LLStack{},
+		&stack.SAStack{},
+		&stack.SLStack{},
 		&stack.LAStack{},
 	} {
 		b.Run(fmt.Sprintf("%T", m), func(b *testing.B) {
