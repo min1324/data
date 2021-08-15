@@ -26,12 +26,11 @@ func queueMap(t *testing.T, test queueStruct) {
 		// &queue.DLQueue{},
 		// &queue.DRQueue{},
 		// &queue.LLQueue{},
-		&queue.LRQueue{},
+		// &queue.LRQueue{},
 		// &queue.SAQueue{},
 		// &queue.SLQueue{},
 		// &queue.SRQueue{},
-		// &queue.Slice{},
-		// &queue.Chain{},
+		&queue.Chain{},
 		// &queue.LKQueue{},
 	} {
 		t.Run(fmt.Sprintf("%T", m), func(t *testing.T) {
@@ -386,7 +385,7 @@ func TestConcurrentDeQueue(t *testing.T) {
 }
 
 func TestConcurrentEnQueueDeQueue(t *testing.T) {
-	const maxGo, maxNum = 8, 1 << 20
+	const maxGo, maxNum = 8, 1 << 15
 	const maxSize = maxGo * maxNum
 
 	queueMap(t, queueStruct{

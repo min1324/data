@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"sync"
 	"sync/atomic"
 	"unsafe"
 )
@@ -12,6 +13,7 @@ const (
 
 // poolChain is a dynamically-sized version of LRQueue.
 type Chain struct {
+	once sync.Once
 	// tail is the LRQueue to push to. This is only accessed
 	// by the producers, so reads and writes must be atomic.
 	tail *chainElt
@@ -22,7 +24,8 @@ type Chain struct {
 }
 
 type chainElt struct {
-	DRQueue
+	// DRQueue
+	LRQueue
 
 	// next and prev link to the adjacent poolChainElts in this
 	// poolChain.
@@ -34,7 +37,7 @@ type chainElt struct {
 	// prev is written atomically by the consumer and read
 	// atomically by the producer. It only transitions from
 	// non-nil to nil.
-	next, prev *chainElt
+	next *chainElt
 }
 
 func storeChainElt(pp **chainElt, v *chainElt) {
@@ -49,37 +52,48 @@ func casChainElt(pp **chainElt, old, new *chainElt) bool {
 	return atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(pp)), unsafe.Pointer(old), unsafe.Pointer(new))
 }
 
+func (c *Chain) onceInit() {
+	c.once.Do(func() {
+		c.init()
+	})
+}
+
+func (c *Chain) init() {
+	newNode := &chainElt{next: nil}
+	newCap := 8
+	newNode.InitWith(newCap)
+	storeChainElt(&c.head, newNode)
+	storeChainElt(&c.tail, newNode)
+}
+
 func (c *Chain) Push(val interface{}) bool {
+	c.onceInit()
 	for {
 		tail := loadChainElt(&c.tail)
-		if tail != nil {
-			// 成功加入队列，直接返回
-			if tail.EnQueue(val) {
-				return true
-			}
+		// 成功加入队列，直接返回
+		if tail.EnQueue(val) {
+			return true
 		}
 		// 队列不存在或满了，需要扩容。
-		newNode := &chainElt{prev: tail}
-		newCap := 8
-		if tail != nil {
-			newCap = tail.Cap() << 1
-		}
+		newNode := &chainElt{}
+		newCap := tail.Cap() << 1
 		if newCap >= queueLimit {
 			newCap = queueLimit
 		}
 		newNode.InitWith(newCap)
+		// 将newTail加入chain
 		if casChainElt(&c.tail, tail, newNode) {
-			// 将newTail加入chain
-			if tail == nil {
-				storeChainElt(&c.head, newNode)
-			} else {
-				storeChainElt(&tail.next, newNode)
+			storeChainElt(&tail.next, newNode)
+			// 优先权
+			if newNode.EnQueue(val) {
+				return true
 			}
 		}
 	}
 }
 
 func (c *Chain) Pop() (val interface{}, ok bool) {
+	c.onceInit()
 	head := loadChainElt(&c.head)
 	if head == nil {
 		return
@@ -108,27 +122,25 @@ func (c *Chain) Pop() (val interface{}, ok bool) {
 			// the garbage collector can collect the empty
 			// dequeue and so popHead doesn't back up
 			// further than necessary.
-			storeChainElt(&head2.prev, nil)
 		}
 		head = head2
 	}
 }
 
 func (c *Chain) Init() {
-	for {
-		tail := loadChainElt(&c.tail)
-		if casChainElt(&c.tail, c.tail, nil) {
-			storeChainElt(&c.head, nil)
-			for tail != nil {
-				p := tail
-				tail = tail.prev
-				p.Init()
-				p.next = nil
-				p.prev = nil
-			}
-			break
-		}
-	}
+	c.init()
+	// for {
+	// 	tail := loadChainElt(&c.tail)
+	// 	if casChainElt(&c.tail, c.tail, nil) {
+	// 		storeChainElt(&c.head, nil)
+	// 		for tail != nil {
+	// 			p := tail
+	// 			p.Init()
+	// 			p.next = nil
+	// 		}
+	// 		break
+	// 	}
+	// }
 }
 
 func (c *Chain) Size() int {

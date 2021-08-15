@@ -59,14 +59,13 @@ func benchMap(b *testing.B, bench bench) {
 		// queue
 		// &UnsafeQueue{},
 		// &queue.Chain{},
-		// &queue.DLQueue{},
-		// &queue.DRQueue{},
-		// &queue.LLQueue{},
+		&queue.DLQueue{},
+		&queue.DRQueue{},
+		&queue.LLQueue{},
 		&queue.LRQueue{},
 		// &queue.SAQueue{},
 		// &queue.SLQueue{},
 		// &queue.SRQueue{},
-		// &queue.Slice{},
 
 		// &queue.SLQueue{},
 		// &queue.SRQueue{},

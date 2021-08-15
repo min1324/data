@@ -90,22 +90,29 @@ func (q *LLQueue) EnQueue(val interface{}) bool {
 	for {
 		tail := atomic.LoadPointer(&q.tail)
 		slot = (*ptrNode)(tail)
+		next := slot.next
 		if tail != atomic.LoadPointer(&q.tail) {
 			continue
 		}
 		// 提升tail直到指向最后一个node
-		if slot.next != nil {
-			cas(&q.tail, tail, slot.next)
+		if next != nil {
+			cas(&q.tail, tail, next)
 			continue
 		}
+		v := slot.load()
+		if v != nil {
+			continue
+		}
+
 		// next==nil,确定slot是最后一个node
 		if cas(&slot.next, nil, nilNode) {
 			// 获得储存的slot，尝试将tail提升到最后一个node。
-			cas(&q.tail, tail, nilNode)
+			cas(&q.tail, tail, slot.next)
+			atomic.AddUint32(&q.len, 1)
 			break
 		}
 	}
-	atomic.AddUint32(&q.len, 1)
+
 	// 将val储存到slot，让DeQueue可以取走
 	slot.store(val)
 	return true

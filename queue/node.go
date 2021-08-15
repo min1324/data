@@ -101,7 +101,7 @@ func (n *ptrNode) store(i interface{}) {
 }
 
 func (n *ptrNode) free() {
-	n.p = nil
+	// n.p = nil
 	n.next = nil
 }
 

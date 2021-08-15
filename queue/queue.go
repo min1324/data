@@ -91,13 +91,6 @@ func NewSRQueue() Queue {
 	return &q
 }
 
-// 一组队列
-func NewSlice() DataQueue {
-	var q Slice
-	q.onceInit()
-	return &q
-}
-
 func cas(p *unsafe.Pointer, old, new unsafe.Pointer) bool {
 	return atomic.CompareAndSwapPointer(p, old, new)
 }
