@@ -62,12 +62,33 @@ func (s *IntSet) Items() []int {
 		}
 		for j := 0; j < platform; j++ {
 			if item&(1<<uint(j)) != 0 {
-				array[sum] = 1<<(platform+i) + j
+				array[sum] = platform*i + j
 				sum += 1
 			}
 		}
 	}
 	return array[:sum]
+}
+
+// String returns the set as a string of the form "{1 2 3}".
+func (s *IntSet) String() string {
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	for i, item := range s.dirty {
+		if item == 0 {
+			continue
+		}
+		for j := 0; j < platform; j++ {
+			if item&(1<<uint(j)) != 0 {
+				if buf.Len() > len("{") {
+					buf.WriteByte(' ')
+				}
+				fmt.Fprintf(&buf, "%d", platform*i+j)
+			}
+		}
+	}
+	buf.WriteByte('}')
+	return buf.String()
 }
 
 // Null report s if an empty set
@@ -91,27 +112,6 @@ func (s *IntSet) Equal(t *IntSet) bool {
 		}
 	}
 	return true
-}
-
-// String returns the set as a string of the form "{1 2 3}".
-func (s *IntSet) String() string {
-	var buf bytes.Buffer
-	buf.WriteByte('{')
-	for i, item := range s.dirty {
-		if item == 0 {
-			continue
-		}
-		for j := 0; j < platform; j++ {
-			if item&(1<<uint(j)) != 0 {
-				if buf.Len() > len("{") {
-					buf.WriteByte(' ')
-				}
-				fmt.Fprintf(&buf, "%d", 1<<(platform+i)+j)
-			}
-		}
-	}
-	buf.WriteByte('}')
-	return buf.String()
 }
 
 // in 64 bit platform
@@ -198,6 +198,9 @@ func (s *IntSet) IntersectWith(t *IntSet) {
 	for i, dirty := range t.dirty {
 		if i < len(s.dirty) {
 			s.dirty[i] &= dirty
+		} else {
+			// item in t,not used.
+			break
 		}
 	}
 	if len(s.dirty) > len(t.dirty) {
@@ -211,6 +214,9 @@ func (s *IntSet) DifferenceWith(t *IntSet) {
 	for i, dirty := range t.dirty {
 		if i < len(s.dirty) {
 			s.dirty[i] &^= dirty
+		} else {
+			// item in t,not used.
+			break
 		}
 	}
 }
@@ -221,6 +227,9 @@ func (s *IntSet) ComplementWith(t *IntSet) {
 	for i, dirty := range t.dirty {
 		if i < len(s.dirty) {
 			s.dirty[i] ^= dirty
+		} else {
+			// in t but not in s
+			s.dirty = append(s.dirty, dirty)
 		}
 	}
 }
@@ -232,11 +241,19 @@ func max(x, y int) int {
 	return y
 }
 
+func maxmin(x, y int) (max, min int) {
+	if x < y {
+		return y, x
+	}
+	return x, y
+}
+
 // Union return the union set of s and t.
 func Union(s, t *IntSet) *IntSet {
 	var p IntSet
-	newLen := max(len(s.dirty), len(t.dirty))
-	p.dirty = make([]uint, newLen)
+	maxLen := max(len(s.dirty), len(t.dirty))
+	p.dirty = make([]uint, maxLen)
+
 	for i, dirty := range s.dirty {
 		p.dirty[i] = dirty
 	}
@@ -251,15 +268,24 @@ func Union(s, t *IntSet) *IntSet {
 // item in s and t
 func Intersect(s, t *IntSet) *IntSet {
 	var p IntSet
-	newLen := max(len(s.dirty), len(t.dirty))
-	p.dirty = make([]uint, newLen)
+	sLen, tLen := len(s.dirty), len(t.dirty)
+	maxLen, minLen := maxmin(sLen, tLen)
+	p.dirty = make([]uint, maxLen)
+
 	for i, dirty := range s.dirty {
 		p.dirty[i] = dirty
+		if i >= minLen {
+			break
+		}
 	}
 
 	for i, dirty := range t.dirty {
 		p.dirty[i] &= dirty
+		if i >= minLen {
+			break
+		}
 	}
+	p.dirty = p.dirty[:minLen]
 	return &p
 }
 
@@ -267,15 +293,21 @@ func Intersect(s, t *IntSet) *IntSet {
 // item in s and not in t
 func Difference(s, t *IntSet) *IntSet {
 	var p IntSet
-	newLen := max(len(s.dirty), len(t.dirty))
-	p.dirty = make([]uint, newLen)
+	sLen := len(s.dirty)
+	maxLen := max(len(s.dirty), len(t.dirty))
+	p.dirty = make([]uint, maxLen)
+
 	for i, dirty := range s.dirty {
 		p.dirty[i] = dirty
 	}
 
 	for i, dirty := range t.dirty {
 		p.dirty[i] &^= dirty
+		if i >= sLen {
+			break
+		}
 	}
+	p.dirty = p.dirty[:sLen]
 	return &p
 }
 
@@ -283,8 +315,8 @@ func Difference(s, t *IntSet) *IntSet {
 // item in s but not in t, and not in s but in t.
 func Complement(s, t *IntSet) *IntSet {
 	var p IntSet
-	newLen := max(len(s.dirty), len(t.dirty))
-	p.dirty = make([]uint, newLen)
+	maxLen := max(len(s.dirty), len(t.dirty))
+	p.dirty = make([]uint, maxLen)
 	for i, dirty := range s.dirty {
 		p.dirty[i] = dirty
 	}
