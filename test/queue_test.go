@@ -18,19 +18,17 @@ type queueStruct struct {
 	perG  func(*testing.T, QInterface)
 }
 
-type queueFunc func(*testing.T, QInterface)
-
 func queueMap(t *testing.T, test queueStruct) {
 	for _, m := range [...]QInterface{
 		// &UnsafeQueue{},
 		// &queue.DLQueue{},
 		// &queue.DRQueue{},
-		// &queue.LLQueue{},
+		&queue.LLQueue{},
 		// &queue.LRQueue{},
 		// &queue.SAQueue{},
 		// &queue.SLQueue{},
 		// &queue.SRQueue{},
-		&queue.Chain{},
+		// &queue.Chain{},
 		// &queue.LKQueue{},
 	} {
 		t.Run(fmt.Sprintf("%T", m), func(t *testing.T) {
@@ -119,8 +117,6 @@ func TestInit(t *testing.T) {
 				case <-tk.C:
 					t.Fatalf("size DeQueue timeout,")
 					exit = true
-
-					break
 				default:
 					_, ok := s.DeQueue()
 					if ok {
@@ -294,8 +290,6 @@ func TestConcurrentInit(t *testing.T) {
 
 func TestConcurrentEnQueue(t *testing.T) {
 	const maxGo, maxNum = 4, 1 << 8
-	const maxSize = maxGo * maxNum
-
 	queueMap(t, queueStruct{
 		setup: func(t *testing.T, s QInterface) {
 			if _, ok := s.(*UnsafeQueue); ok {
@@ -386,8 +380,6 @@ func TestConcurrentDeQueue(t *testing.T) {
 
 func TestConcurrentEnQueueDeQueue(t *testing.T) {
 	const maxGo, maxNum = 8, 1 << 15
-	const maxSize = maxGo * maxNum
-
 	queueMap(t, queueStruct{
 		setup: func(t *testing.T, s QInterface) {
 			if _, ok := s.(*UnsafeQueue); ok {

@@ -18,8 +18,6 @@ type stackStruct struct {
 	perG  func(*testing.T, SInterface)
 }
 
-type stackFunc func(*testing.T, SInterface)
-
 func stackMap(t *testing.T, test stackStruct) {
 	for _, m := range [...]SInterface{
 		&stack.LAStack{},
@@ -105,8 +103,6 @@ func TestStackInit(t *testing.T) {
 				case <-tk.C:
 					t.Fatalf("size Pop timeout,")
 					exit = true
-
-					break
 				default:
 					_, ok := s.Pop()
 					if ok {
@@ -281,8 +277,6 @@ func TestConStackInit(t *testing.T) {
 
 func TestConcurrentPush(t *testing.T) {
 	const maxGo, maxNum = 4, 1 << 8
-	const maxSize = maxGo * maxNum
-
 	stackMap(t, stackStruct{
 		setup: func(t *testing.T, s SInterface) {
 
@@ -349,8 +343,6 @@ func TestConcurrentPop(t *testing.T) {
 
 func TestConcurrentPushPop(t *testing.T) {
 	const maxGo, maxNum = 4, 1 << 10
-	const maxSize = maxGo * maxNum
-
 	stackMap(t, stackStruct{
 		setup: func(t *testing.T, s SInterface) {
 			// if _, ok := s.(*UnsafeQueue); ok {

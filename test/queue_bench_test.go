@@ -37,18 +37,6 @@ var mapQueues = [...]mapQueue{opEnQueue, opDeQueue}
 const queueMaxSize = 1 << 24    // queue max size
 const prevEnQueueSize = 1 << 20 // queue previous EnQueue
 
-func randCall(m QInterface) {
-	op := mapQueues[rand.Intn(len(mapQueues))]
-	switch op {
-	case opEnQueue:
-		m.EnQueue(1)
-	case opDeQueue:
-		m.DeQueue()
-	default:
-		panic("invalid mapQueue")
-	}
-}
-
 type bench struct {
 	setup func(*testing.B, QInterface)
 	perG  func(b *testing.B, pb *testing.PB, i int, m QInterface)
@@ -313,7 +301,6 @@ func BenchmarkConcurrentEnQueue(b *testing.B) {
 }
 
 func BenchmarkConcurrentRand(b *testing.B) {
-	const stackSize = 1 << 10
 	rand.Seed(time.Now().Unix())
 
 	benchMap(b, bench{

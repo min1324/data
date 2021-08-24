@@ -180,7 +180,6 @@ func (q *UnsafeQueue) Init() {
 		head = el.next
 		el.next = nil
 	}
-	return
 }
 
 func (q *UnsafeQueue) Full() bool {

@@ -37,18 +37,6 @@ var mapStacks = [...]mapStack{opPush, opPop}
 const stackMaxSize = 1 << 22 // queue max size
 const prevPushSize = 1 << 20 // queue previous Push
 
-func randStackCall(m SInterface) {
-	op := mapStacks[rand.Intn(len(mapStacks))]
-	switch op {
-	case opPush:
-		m.Push(1)
-	case opPop:
-		m.Pop()
-	default:
-		panic("invalid mapStack")
-	}
-}
-
 type benchS struct {
 	setup func(*testing.B, SInterface)
 	perG  func(b *testing.B, pb *testing.PB, i int, m SInterface)
@@ -296,7 +284,6 @@ func BenchmarkStackConcurrentPush(b *testing.B) {
 }
 
 func BenchmarkStackConcurrentRand(b *testing.B) {
-	const stackSize = 1 << 10
 	rand.Seed(time.Now().Unix())
 
 	benchSMap(b, benchS{
