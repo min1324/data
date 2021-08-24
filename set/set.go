@@ -200,6 +200,9 @@ func (s *IntSet) IntersectWith(t *IntSet) {
 			s.dirty[i] &= dirty
 		}
 	}
+	if len(s.dirty) > len(t.dirty) {
+		s.dirty = s.dirty[:len(t.dirty)]
+	}
 }
 
 // DifferenceWith s to the difference of s and t
@@ -234,8 +237,8 @@ func Union(s, t *IntSet) *IntSet {
 	var p IntSet
 	newLen := max(len(s.dirty), len(t.dirty))
 	p.dirty = make([]uint, newLen)
-	for i := range s.dirty {
-		p.dirty[i] = s.dirty[i]
+	for i, dirty := range s.dirty {
+		p.dirty[i] = dirty
 	}
 
 	for i, dirty := range t.dirty {
@@ -250,8 +253,8 @@ func Intersect(s, t *IntSet) *IntSet {
 	var p IntSet
 	newLen := max(len(s.dirty), len(t.dirty))
 	p.dirty = make([]uint, newLen)
-	for i := range s.dirty {
-		p.dirty[i] = s.dirty[i]
+	for i, dirty := range s.dirty {
+		p.dirty[i] = dirty
 	}
 
 	for i, dirty := range t.dirty {
@@ -266,8 +269,8 @@ func Difference(s, t *IntSet) *IntSet {
 	var p IntSet
 	newLen := max(len(s.dirty), len(t.dirty))
 	p.dirty = make([]uint, newLen)
-	for i := range s.dirty {
-		p.dirty[i] = s.dirty[i]
+	for i, dirty := range s.dirty {
+		p.dirty[i] = dirty
 	}
 
 	for i, dirty := range t.dirty {
@@ -282,8 +285,8 @@ func Complement(s, t *IntSet) *IntSet {
 	var p IntSet
 	newLen := max(len(s.dirty), len(t.dirty))
 	p.dirty = make([]uint, newLen)
-	for i := range s.dirty {
-		p.dirty[i] = s.dirty[i]
+	for i, dirty := range s.dirty {
+		p.dirty[i] = dirty
 	}
 
 	for i, dirty := range t.dirty {
